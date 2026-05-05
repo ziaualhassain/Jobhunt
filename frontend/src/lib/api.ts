@@ -42,3 +42,22 @@ export async function getStats(): Promise<{ total: number; byStatus: { status: s
   const res = await api.get('/applications/stats/summary');
   return res.data;
 }
+
+export interface ResumeAnalysis {
+  skills: string[];
+  experienceLevel: string;
+  yearsOfExperience: number;
+  jobTitles: string[];
+  searchKeywords: string[];
+  cloudPlatforms: string[];
+  summary: string;
+}
+
+export async function analyzeResume(file: File): Promise<{ analysis: ResumeAnalysis; filename: string }> {
+  const form = new FormData();
+  form.append('resume', file);
+  const res = await api.post('/resume/analyze', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
