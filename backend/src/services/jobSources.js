@@ -14,14 +14,12 @@ async function fetchRemoteOK(keywords, tags) {
       timeout: 10000,
     });
     const jobs = res.data.filter(j => j.id);
-    const query = [...keywords, ...tags].map(t => t.toLowerCase());
+    const allKeywords = [...keywords, ...tags];
 
     return jobs
       .filter(job => {
-        if (query.length === 0) return true;
-        const text = [job.position, job.company, job.description, ...(job.tags || [])]
-          .join(' ').toLowerCase();
-        return query.some(q => text.includes(q));
+        const text = [job.position, job.company, job.description, ...(job.tags || [])].join(' ');
+        return matchesKeywords(text, allKeywords);
       })
       .map(job => ({
         job_id: `remoteok-${job.id}`,
@@ -82,7 +80,7 @@ async function fetchWeWorkRemotely() {
 // Himalayas – free public API
 async function fetchHimalayas(keywords) {
   try {
-    const query = keywords.length > 0 ? keywords.join(' ') : 'software engineer developer';
+    const query = apiSearchTerms(keywords);
     const res = await axios.get('https://himalayas.app/jobs/api', {
       params: { q: query, limit: 50 },
       timeout: 10000,
@@ -109,7 +107,7 @@ async function fetchHimalayas(keywords) {
 // Arbeit Now – free public API
 async function fetchArbeitNow(keywords) {
   try {
-    const query = keywords.length > 0 ? keywords.join(',') : 'software developer';
+    const query = apiSearchTerms(keywords);
     const res = await axios.get('https://www.arbeitnow.com/api/job-board-api', {
       params: { search: query },
       timeout: 10000,
@@ -162,6 +160,28 @@ function formatSalary(min, max, currency = 'USD') {
   return '';
 }
 
+/**
+ * Returns true if the text satisfies at least one keyword.
+ * A keyword "blockchain developer" is satisfied when ALL its words
+ * appear anywhere in the text (order-independent). Multiple keywords
+ * are OR-ed together.
+ */
+function matchesKeywords(text, keywords) {
+  if (keywords.length === 0) return true;
+  const lower = text.toLowerCase();
+  return keywords.some(kw =>
+    kw.toLowerCase().split(/\s+/).filter(w => w.length > 1).every(w => lower.includes(w))
+  );
+}
+
+/** Best search terms to send to external APIs (unique, significant words). */
+function apiSearchTerms(keywords, maxWords = 5) {
+  const words = [...new Set(
+    keywords.flatMap(k => k.toLowerCase().split(/\s+/)).filter(w => w.length > 2)
+  )];
+  return words.slice(0, maxWords).join(' ') || 'software developer';
+}
+
 // ─── Aggregator ─────────────────────────────────────────────────────────────
 
 const TECH_KEYWORDS = [
@@ -188,12 +208,11 @@ async function aggregateJobs(filters = {}) {
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
   ];
 
-  // Keyword filter — includes location in searchable text
+  // Keyword filter — word-level match, OR across keywords, AND across words within a keyword
   if (keywords.length > 0) {
-    const kw = keywords.map(k => k.toLowerCase());
     allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.company} ${job.description} ${job.tags} ${job.location}`.toLowerCase();
-      return kw.some(k => text.includes(k));
+      const text = `${job.title} ${job.company} ${job.description} ${job.tags} ${job.location}`;
+      return matchesKeywords(text, keywords);
     });
   }
 

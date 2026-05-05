@@ -11,10 +11,15 @@ async function getTheirStackJobs(filters) {
   const params = [];
 
   if (keywords.length > 0) {
-    const kwConditions = keywords.map(k => {
-      params.push(`%${k.toLowerCase()}%`);
-      const i = params.length;
-      return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
+    // Each keyword's words must all appear (AND), keywords are OR-ed
+    const kwConditions = keywords.map(kw => {
+      const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+      const wordClauses = words.map(w => {
+        params.push(`%${w}%`);
+        const i = params.length;
+        return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
+      });
+      return `(${wordClauses.join(' AND ')})`;
     });
     conditions.push(`(${kwConditions.join(' OR ')})`);
   }
