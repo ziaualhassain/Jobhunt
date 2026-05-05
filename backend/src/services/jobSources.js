@@ -106,59 +106,6 @@ async function fetchHimalayas(keywords) {
   }
 }
 
-// TheirStack – requires API key
-async function fetchTheirStack(keywords, tags, location) {
-  const apiKey = process.env.THEIRSTACK_API_KEY;
-  if (!apiKey) return [];
-
-  try {
-    const body = {
-      order_by: [{ desc: true, field: 'date_posted' }],
-      page: 0,
-      limit: 50,
-      posted_at_max_age_days: 15,
-      blur_company_data: false,
-      include_total_results: false,
-      job_title_pattern_or: keywords.length > 0
-        ? keywords.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-        : ['software engineer', 'developer', 'engineer'],
-      job_technology_slug_or: tags.length > 0 ? tags.map(t => t.toLowerCase().replace(/\s+/g, '-')) : [],
-      job_location_or: location ? [location] : [],
-      job_country_code_or: [],
-      job_description_pattern_not: [],
-      company_name_or: [],
-      industry_or: [],
-      only_yc_companies: false,
-    };
-
-    const res = await axios.post('https://api.theirstack.com/v1/jobs/search', body, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      timeout: 15000,
-    });
-
-    return (res.data.data || []).map(job => ({
-      job_id: `theirstack-${job.id}`,
-      title: job.name || job.title || '',
-      company: job.company_name || job.company_object?.name || '',
-      location: job.location || job.job_country || 'Remote',
-      url: job.url || job.job_url || '',
-      description: stripHtml(job.description || job.short_description || ''),
-      salary: formatSalary(job.salary_min, job.salary_max, job.salary_currency || 'USD'),
-      job_type: job.employment_type || 'Full-time',
-      source: 'TheirStack',
-      tags: (job.technology_slugs || []).join(', '),
-      logo: job.company_object?.logo_url || '',
-    }));
-  } catch (err) {
-    console.error('[TheirStack] fetch failed:', err.message);
-    return [];
-  }
-}
-
 // Arbeit Now – free public API
 async function fetchArbeitNow(keywords) {
   try {
@@ -223,16 +170,15 @@ const TECH_KEYWORDS = [
 ];
 
 async function aggregateJobs(filters = {}) {
-  const { keywords = [], tags = [], jobType = '', location = '' } = filters;
+  const { keywords = [], tags = [], jobType = '' } = filters;
 
   const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
-  const [remoteOK, wwr, himalayas, arbeitNow, theirStack] = await Promise.allSettled([
+  const [remoteOK, wwr, himalayas, arbeitNow] = await Promise.allSettled([
     fetchRemoteOK(searchKeywords, tags),
     fetchWeWorkRemotely(),
     fetchHimalayas(searchKeywords),
     fetchArbeitNow(searchKeywords),
-    fetchTheirStack(searchKeywords, tags, location),
   ]);
 
   let allJobs = [
@@ -240,7 +186,6 @@ async function aggregateJobs(filters = {}) {
     ...(wwr.status === 'fulfilled' ? wwr.value : []),
     ...(himalayas.status === 'fulfilled' ? himalayas.value : []),
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
-    ...(theirStack.status === 'fulfilled' ? theirStack.value : []),
   ];
 
   // Keyword filter (only when user supplied keywords)

@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { initDb } = require('./db/database');
+const { startTheirStackSync } = require('./services/theirStackSync');
 const jobsRouter = require('./routes/jobs');
 const applicationsRouter = require('./routes/applications');
 const resumeRouter = require('./routes/resume');
@@ -32,7 +33,10 @@ if (missing.length) {
 }
 
 initDb()
-  .then(() => app.listen(PORT, () => console.log(`JobHunt API running on http://localhost:${PORT}`)))
+  .then(() => {
+    app.listen(PORT, () => console.log(`JobHunt API running on http://localhost:${PORT}`));
+    startTheirStackSync();
+  })
   .catch(err => {
     console.error('\nDatabase init failed!');
     console.error('  message:', err.message);
