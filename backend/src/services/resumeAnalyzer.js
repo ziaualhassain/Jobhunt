@@ -1,4 +1,4 @@
-const pdfParse = require('pdf-parse/lib/pdf-parse.js');
+const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
