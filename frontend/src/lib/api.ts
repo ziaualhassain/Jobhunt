@@ -36,6 +36,7 @@ export interface UserPreferences {
   remote: boolean
   location: string
   jobType: string
+  lastSearch?: import('../types').SearchFilters
 }
 
 export interface Profile extends User {

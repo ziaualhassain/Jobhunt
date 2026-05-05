@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Layers, SortAsc } from 'lucide-react'
 import SearchForm from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
-import { searchJobs, saveApplication, getApplications, getProfile } from '../lib/api'
+import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
 
@@ -17,12 +17,22 @@ export default function JobsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
+  const restoredRef = useRef(false)
 
   // Load user preferences to populate default search
   const { data: profile } = useQuery({
     queryKey: ['profile'],
     queryFn: getProfile,
   })
+
+  // Restore last search from DB once profile loads
+  useEffect(() => {
+    if (!restoredRef.current && profile?.preferences?.lastSearch) {
+      restoredRef.current = true
+      setFilters(profile.preferences.lastSearch)
+      setSearchKey(k => k + 1)
+    }
+  }, [profile])
 
   const defaultFilters: Partial<SearchFilters> = filters ?? {
     tags: profile?.preferences?.interests ?? [],
@@ -65,6 +75,13 @@ export default function JobsPage() {
   function handleSearch(f: Partial<SearchFilters>) {
     setFilters(f)
     setResumeFilters(null)
+    updateProfile({ preferences: { lastSearch: f as SearchFilters } }).catch(() => {})
+  }
+
+  function handleClear() {
+    setFilters(null)
+    setResumeFilters(null)
+    // intentionally not saving to DB — clear is a temporary session action
   }
 
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
@@ -111,6 +128,7 @@ export default function JobsPage() {
       <SearchForm
         key={searchKey}
         onSearch={handleSearch}
+        onClear={handleClear}
         loading={isLoading}
         initialFilters={resumeFilters ?? (filters ?? defaultFilters)}
       />

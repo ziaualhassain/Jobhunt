@@ -170,7 +170,7 @@ const TECH_KEYWORDS = [
 ];
 
 async function aggregateJobs(filters = {}) {
-  const { keywords = [], tags = [], jobType = '' } = filters;
+  const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '', remote = true } = filters;
 
   const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
@@ -188,11 +188,11 @@ async function aggregateJobs(filters = {}) {
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
   ];
 
-  // Keyword filter (only when user supplied keywords)
+  // Keyword filter — includes location in searchable text
   if (keywords.length > 0) {
     const kw = keywords.map(k => k.toLowerCase());
     allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.company} ${job.description} ${job.tags}`.toLowerCase();
+      const text = `${job.title} ${job.company} ${job.description} ${job.tags} ${job.location}`.toLowerCase();
       return kw.some(k => text.includes(k));
     });
   }
@@ -206,9 +206,34 @@ async function aggregateJobs(filters = {}) {
     });
   }
 
+  // Location + remote filter — four combinations
+  if (location || remote) {
+    const loc = location.toLowerCase();
+    allJobs = allJobs.filter(job => {
+      const jobLoc = (job.location || '').toLowerCase();
+      const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere');
+      const matchesLoc = loc ? jobLoc.includes(loc) : false;
+
+      if (loc && remote)  return matchesLoc || isRemote;  // Hyderabad + remote
+      if (loc && !remote) return matchesLoc;               // Hyderabad only, no remote
+      /* !loc && remote */ return isRemote;                // Remote only
+    });
+  }
+  // !loc && !remote → no location filter applied
+
+  // Experience level filter — match against title and description
+  if (experienceLevel) {
+    const level = experienceLevel.toLowerCase();
+    allJobs = allJobs.filter(job => {
+      const text = `${job.title} ${job.description}`.toLowerCase();
+      return text.includes(level);
+    });
+  }
+
+  // Job type filter
   if (jobType) {
     allJobs = allJobs.filter(job =>
-      job.job_type.toLowerCase().includes(jobType.toLowerCase())
+      (job.job_type || '').toLowerCase().includes(jobType.toLowerCase())
     );
   }
 
