@@ -5,7 +5,7 @@ const { pool } = require('../db/database');
 
 // Query TheirStack jobs stored in the DB
 async function getTheirStackJobs(filters) {
-  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '' } = filters;
+  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '', remote = true } = filters;
 
   const conditions = [];
   const params = [];
@@ -27,9 +27,18 @@ async function getTheirStackJobs(filters) {
     conditions.push(`(${tagConditions.join(' OR ')})`);
   }
 
-  if (location) {
-    params.push(`%${location.toLowerCase()}%`);
-    conditions.push(`LOWER(location) LIKE $${params.length}`);
+  if (location || remote) {
+    const loc = location.toLowerCase();
+    if (loc && remote) {
+      params.push(`%${loc}%`);
+      conditions.push(`(LOWER(location) LIKE $${params.length} OR LOWER(location) LIKE '%remote%' OR LOWER(location) LIKE '%anywhere%')`);
+    } else if (loc && !remote) {
+      params.push(`%${loc}%`);
+      conditions.push(`(LOWER(location) LIKE $${params.length} AND LOWER(location) NOT LIKE '%remote%' AND LOWER(location) NOT LIKE '%anywhere%')`);
+    } else {
+      // remote=true, no location — remote jobs only
+      conditions.push(`(LOWER(location) LIKE '%remote%' OR LOWER(location) LIKE '%anywhere%')`);
+    }
   }
 
   if (experienceLevel) {

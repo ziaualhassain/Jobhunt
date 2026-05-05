@@ -170,7 +170,7 @@ const TECH_KEYWORDS = [
 ];
 
 async function aggregateJobs(filters = {}) {
-  const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '' } = filters;
+  const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '', remote = true } = filters;
 
   const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
@@ -206,14 +206,20 @@ async function aggregateJobs(filters = {}) {
     });
   }
 
-  // Location filter — always keep remote jobs since they're accessible anywhere
-  if (location) {
+  // Location + remote filter — four combinations
+  if (location || remote) {
     const loc = location.toLowerCase();
     allJobs = allJobs.filter(job => {
       const jobLoc = (job.location || '').toLowerCase();
-      return jobLoc.includes(loc) || jobLoc.includes('remote') || jobLoc.includes('anywhere');
+      const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere');
+      const matchesLoc = loc ? jobLoc.includes(loc) : false;
+
+      if (loc && remote)  return matchesLoc || isRemote;  // Hyderabad + remote
+      if (loc && !remote) return matchesLoc;               // Hyderabad only, no remote
+      /* !loc && remote */ return isRemote;                // Remote only
     });
   }
+  // !loc && !remote → no location filter applied
 
   // Experience level filter — match against title and description
   if (experienceLevel) {
