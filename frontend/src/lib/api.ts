@@ -80,8 +80,8 @@ export async function getApplications(status?: ApplicationStatus): Promise<Appli
   return res.data;
 }
 
-export async function saveApplication(job: Job, status: 'saved' | 'applied' = 'saved'): Promise<Application> {
-  const res = await api.post('/applications', { ...job, status });
+export async function saveApplication(job: Job): Promise<Application> {
+  const res = await api.post('/applications', { ...job, status: 'saved' });
   return res.data;
 }
 

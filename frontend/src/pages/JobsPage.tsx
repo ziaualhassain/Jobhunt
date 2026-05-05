@@ -6,7 +6,7 @@ import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
-import type { SearchFilters } from '../types'
+import type { Job, SearchFilters } from '../types'
 
 type SortKey = 'default' | 'title' | 'company' | 'source'
 
@@ -45,13 +45,12 @@ export default function JobsPage() {
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
   const saveMutation = useMutation({
-    mutationFn: ({ job, status }: { job: Job; status?: 'saved' | 'applied' }) =>
-      saveApplication(job, status),
-    onSuccess: (_, { job }) => {
+    mutationFn: (job: Job) => saveApplication(job),
+    onSuccess: (_, job) => {
       qc.invalidateQueries({ queryKey: ['applications'] })
       showToast(`"${job.title}" saved to tracker`)
     },
-    onError: (err: unknown, { job }) => {
+    onError: (err: unknown) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       if (msg === 'Job already saved') showToast('Already in your tracker')
       else showToast('Failed to save job')
@@ -185,7 +184,7 @@ export default function JobsPage() {
               key={job.job_id}
               job={job}
               isSaved={savedIds.has(job.job_id)}
-              onSave={(j, status) => saveMutation.mutate({ job: j, status })}
+              onSave={j => saveMutation.mutate(j)}
             />
           ))}
         </div>

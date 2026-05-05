@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, CheckCircle2 } from 'lucide-react'
+import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp } from 'lucide-react'
 import type { Job } from '../types'
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -12,7 +12,7 @@ const SOURCE_COLORS: Record<string, string> = {
 interface Props {
   job: Job
   isSaved: boolean
-  onSave: (job: Job, status?: 'saved' | 'applied') => void
+  onSave: (job: Job) => void
 }
 
 export default function JobCard({ job, isSaved, onSave }: Props) {
@@ -91,32 +91,17 @@ export default function JobCard({ job, isSaved, onSave }: Props) {
               View Job
             </a>
 
-            {isSaved ? (
-              <span className="flex items-center gap-1.5 text-xs text-brand-400 ml-auto">
-                <BookmarkCheck size={13} />
-                Saved
-              </span>
-            ) : (
-              <div className="flex items-center gap-1.5 ml-auto">
-                <button
-                  type="button"
-                  onClick={() => onSave(job, 'saved')}
-                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-brand-400 transition-colors font-medium"
-                >
-                  <Bookmark size={13} />
-                  Save
-                </button>
-                <span className="text-slate-700">·</span>
-                <button
-                  type="button"
-                  onClick={() => onSave(job, 'applied')}
-                  className="flex items-center gap-1 text-xs text-slate-500 hover:text-emerald-400 transition-colors font-medium"
-                >
-                  <CheckCircle2 size={13} />
-                  Applied
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => onSave(job)}
+              disabled={isSaved}
+              className={`flex items-center gap-1.5 text-xs transition-colors font-medium ml-auto ${
+                isSaved ? 'text-brand-400 cursor-default' : 'text-slate-500 hover:text-brand-400'
+              }`}
+            >
+              {isSaved ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+              {isSaved ? 'Saved' : 'Save'}
+            </button>
           </div>
         </div>
       </div>
