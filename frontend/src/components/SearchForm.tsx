@@ -65,6 +65,15 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
             onChange={e => setKeywordInput(e.target.value)}
           />
         </div>
+        <div className="relative w-44 shrink-0">
+          <input
+            type="text"
+            className="input pl-3 w-full"
+            placeholder="Location (e.g. Hyderabad)"
+            value={location}
+            onChange={e => setLocation(e.target.value)}
+          />
+        </div>
         <button
           type="button"
           onClick={() => setShowFilters(v => !v)}
@@ -147,15 +156,6 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
               <option value="">Any</option>
               {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs text-slate-500 mb-1">Location</label>
-            <input
-              className="input"
-              placeholder="e.g. Remote, US, UK, Berlin"
-              value={location}
-              onChange={e => setLocation(e.target.value)}
-            />
           </div>
           <div className="flex items-center gap-2 pt-3">
             <button

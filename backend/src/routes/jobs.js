@@ -5,7 +5,7 @@ const { pool } = require('../db/database');
 
 // Query TheirStack jobs stored in the DB
 async function getTheirStackJobs(filters) {
-  const { keywords = [], tags = [] } = filters;
+  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '' } = filters;
 
   const conditions = [];
   const params = [];
@@ -14,7 +14,7 @@ async function getTheirStackJobs(filters) {
     const kwConditions = keywords.map(k => {
       params.push(`%${k.toLowerCase()}%`);
       const i = params.length;
-      return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i})`;
+      return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
     });
     conditions.push(`(${kwConditions.join(' OR ')})`);
   }
@@ -25,6 +25,22 @@ async function getTheirStackJobs(filters) {
       return `LOWER(tags) LIKE $${params.length}`;
     });
     conditions.push(`(${tagConditions.join(' OR ')})`);
+  }
+
+  if (location) {
+    params.push(`%${location.toLowerCase()}%`);
+    conditions.push(`LOWER(location) LIKE $${params.length}`);
+  }
+
+  if (experienceLevel) {
+    params.push(`%${experienceLevel.toLowerCase()}%`);
+    const i = params.length;
+    conditions.push(`(LOWER(title) LIKE $${i} OR LOWER(description) LIKE $${i})`);
+  }
+
+  if (jobType) {
+    params.push(`%${jobType.toLowerCase()}%`);
+    conditions.push(`LOWER(job_type) LIKE $${params.length}`);
   }
 
   let sql = 'SELECT * FROM theirstack_jobs';
