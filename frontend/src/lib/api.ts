@@ -27,6 +27,37 @@ export async function getMe(): Promise<User> {
   return res.data;
 }
 
+// ── Profile ───────────────────────────────────────────────────────────────────
+
+export interface UserPreferences {
+  interests: string[]
+  keywords: string[]
+  experienceLevel: string
+  remote: boolean
+  location: string
+  jobType: string
+}
+
+export interface Profile extends User {
+  preferences: UserPreferences
+  created_at: string
+}
+
+export async function getProfile(): Promise<Profile> {
+  const res = await api.get('/profile');
+  return res.data;
+}
+
+export async function updateProfile(data: {
+  name?: string
+  preferences?: Partial<UserPreferences>
+  currentPassword?: string
+  newPassword?: string
+}): Promise<Profile> {
+  const res = await api.put('/profile', data);
+  return res.data;
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {
@@ -50,7 +81,28 @@ export async function getApplications(status?: ApplicationStatus): Promise<Appli
 }
 
 export async function saveApplication(job: Job): Promise<Application> {
-  const res = await api.post('/applications', job);
+  const res = await api.post('/applications', { ...job, status: 'saved' });
+  return res.data;
+}
+
+export async function addCustomJob(data: {
+  title: string
+  company: string
+  status: ApplicationStatus
+  location?: string
+  url?: string
+  salary?: string
+  job_type?: string
+  tags?: string
+  notes?: string
+}): Promise<Application> {
+  const job_id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const res = await api.post('/applications', {
+    job_id,
+    source: 'Manual',
+    description: '',
+    ...data,
+  });
   return res.data;
 }
 

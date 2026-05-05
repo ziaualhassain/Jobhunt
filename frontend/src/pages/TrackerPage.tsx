@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Kanban, TrendingUp } from 'lucide-react'
-import { getApplications, updateApplication, deleteApplication, getStats } from '../lib/api'
+import { Loader2, Kanban, TrendingUp, Plus } from 'lucide-react'
+import { getApplications, updateApplication, deleteApplication, getStats, addCustomJob } from '../lib/api'
 import ApplicationCard from '../components/ApplicationCard'
+import AddJobModal from '../components/AddJobModal'
 import type { Application, ApplicationStatus } from '../types'
 import { STATUS_CONFIG } from '../types'
 
@@ -11,6 +13,17 @@ const COLUMNS: ApplicationStatus[] = [
 
 export default function TrackerPage() {
   const qc = useQueryClient()
+  const [draggingId, setDraggingId] = useState<number | null>(null)
+  const [dragOverCol, setDragOverCol] = useState<ApplicationStatus | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  const addMutation = useMutation({
+    mutationFn: addCustomJob,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['applications'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
 
   const { data: applications = [], isLoading } = useQuery({
     queryKey: ['applications'],
@@ -49,6 +62,37 @@ export default function TrackerPage() {
     (stats?.byStatus ?? []).map(s => [s.status, s.count])
   )
 
+  // ── Drag and drop handlers ────────────────────────────────────────────────
+
+  function handleDragStart(id: number) {
+    setDraggingId(id)
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null)
+    setDragOverCol(null)
+  }
+
+  function handleDragOver(e: React.DragEvent, col: ApplicationStatus) {
+    e.preventDefault()
+    setDragOverCol(col)
+  }
+
+  function handleDragLeave() {
+    setDragOverCol(null)
+  }
+
+  function handleDrop(col: ApplicationStatus) {
+    if (draggingId !== null) {
+      const app = applications.find(a => a.id === draggingId)
+      if (app && app.status !== col) {
+        updateMutation.mutate({ id: draggingId, data: { status: col } })
+      }
+    }
+    setDraggingId(null)
+    setDragOverCol(null)
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64 text-slate-500">
@@ -60,16 +104,24 @@ export default function TrackerPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
             <Kanban size={22} className="text-brand-400" />
             Application Tracker
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            {stats?.total ?? 0} total applications
+            {stats?.total ?? 0} total · drag cards between columns to update status
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="btn-primary flex items-center gap-2 px-4 py-2 text-sm shrink-0"
+        >
+          <Plus size={15} />
+          Add Job
+        </button>
       </div>
 
       {/* Stats row */}
@@ -102,9 +154,17 @@ export default function TrackerPage() {
             {COLUMNS.map(col => {
               const cfg = STATUS_CONFIG[col]
               const colApps = byStatus[col]
+              const isOver = dragOverCol === col
+
               return (
-                <div key={col} className="w-64 shrink-0">
-                  <div className={`flex items-center justify-between mb-2 px-1`}>
+                <div
+                  key={col}
+                  className="w-64 shrink-0"
+                  onDragOver={e => handleDragOver(e, col)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={() => handleDrop(col)}
+                >
+                  <div className="flex items-center justify-between mb-2 px-1">
                     <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.color}`}>
                       {cfg.label}
                     </span>
@@ -112,21 +172,28 @@ export default function TrackerPage() {
                       {colApps.length}
                     </span>
                   </div>
-                  <div className={`rounded-xl p-2 space-y-2 min-h-[200px] border ${cfg.border} bg-slate-900/40`}>
+                  <div
+                    className={`rounded-xl p-2 space-y-2 min-h-[200px] border transition-colors ${
+                      isOver
+                        ? `${cfg.border} bg-slate-800/60 ring-1 ring-inset ${cfg.border}`
+                        : `${cfg.border} bg-slate-900/40`
+                    }`}
+                  >
                     {colApps.length === 0 && (
-                      <p className="text-center text-slate-700 text-xs py-8">Empty</p>
+                      <p className={`text-center text-xs py-8 transition-colors ${isOver ? cfg.color + ' opacity-50' : 'text-slate-700'}`}>
+                        {isOver ? `Move here` : 'Empty'}
+                      </p>
                     )}
                     {colApps.map(app => (
                       <ApplicationCard
                         key={app.id}
                         app={app}
-                        onStatusChange={(id, status) =>
-                          updateMutation.mutate({ id, data: { status } })
-                        }
-                        onNotesChange={(id, notes) =>
-                          updateMutation.mutate({ id, data: { notes } })
-                        }
+                        onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
+                        onNotesChange={(id, notes) => updateMutation.mutate({ id, data: { notes } })}
                         onDelete={id => deleteMutation.mutate(id)}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                        isDragging={draggingId === app.id}
                       />
                     ))}
                   </div>
@@ -135,6 +202,13 @@ export default function TrackerPage() {
             })}
           </div>
         </div>
+      )}
+
+      {showAddModal && (
+        <AddJobModal
+          onClose={() => setShowAddModal(false)}
+          onSubmit={async data => { await addMutation.mutateAsync(data) }}
+        />
       )}
     </div>
   )

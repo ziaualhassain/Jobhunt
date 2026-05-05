@@ -2,9 +2,7 @@ const axios = require('axios');
 const Parser = require('rss-parser');
 
 const rssParser = new Parser({
-  customFields: {
-    item: ['description', 'pubDate', 'link', 'title'],
-  },
+  customFields: { item: ['description', 'pubDate', 'link', 'title'] },
   timeout: 10000,
 });
 
@@ -15,20 +13,15 @@ async function fetchRemoteOK(keywords, tags) {
       headers: { 'User-Agent': 'JobHunt/1.0 (personal job tracker)' },
       timeout: 10000,
     });
-    const jobs = res.data.filter(j => j.id); // first entry is metadata
+    const jobs = res.data.filter(j => j.id);
     const query = [...keywords, ...tags].map(t => t.toLowerCase());
 
     return jobs
       .filter(job => {
-        const searchText = [
-          job.position,
-          job.company,
-          job.description,
-          ...(job.tags || []),
-        ]
-          .join(' ')
-          .toLowerCase();
-        return query.length === 0 || query.some(q => searchText.includes(q));
+        if (query.length === 0) return true;
+        const text = [job.position, job.company, job.description, ...(job.tags || [])]
+          .join(' ').toLowerCase();
+        return query.some(q => text.includes(q));
       })
       .map(job => ({
         job_id: `remoteok-${job.id}`,
@@ -49,12 +42,14 @@ async function fetchRemoteOK(keywords, tags) {
   }
 }
 
-// We Work Remotely – RSS feed, no key needed
-async function fetchWeWorkRemotely(category = 'devops-sysadmin') {
-  // categories: devops-sysadmin, programming
+// We Work Remotely – RSS feeds
+async function fetchWeWorkRemotely() {
   const urls = [
-    `https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss`,
-    `https://weworkremotely.com/categories/remote-programming-jobs.rss`,
+    'https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss',
+    'https://weworkremotely.com/categories/remote-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-front-end-programming-jobs.rss',
+    'https://weworkremotely.com/categories/remote-back-end-programming-jobs.rss',
   ];
 
   const results = [];
@@ -63,11 +58,10 @@ async function fetchWeWorkRemotely(category = 'devops-sysadmin') {
       const feed = await rssParser.parseURL(url);
       feed.items.forEach((item, idx) => {
         const title = item.title || '';
-        const company = extractCompany(title);
         results.push({
           job_id: `wwr-${Buffer.from(item.link || idx.toString()).toString('base64').slice(0, 16)}`,
           title: extractTitle(title),
-          company,
+          company: extractCompany(title),
           location: 'Remote',
           url: item.link,
           description: stripHtml(item.content || item.description || ''),
@@ -88,13 +82,12 @@ async function fetchWeWorkRemotely(category = 'devops-sysadmin') {
 // Himalayas – free public API
 async function fetchHimalayas(keywords) {
   try {
-    const query = keywords.join(' ') || 'devops cloud';
-    const res = await axios.get(`https://himalayas.app/jobs/api`, {
+    const query = keywords.length > 0 ? keywords.join(' ') : 'software engineer developer';
+    const res = await axios.get('https://himalayas.app/jobs/api', {
       params: { q: query, limit: 50 },
       timeout: 10000,
     });
-    const jobs = res.data.jobs || [];
-    return jobs.map(job => ({
+    return (res.data.jobs || []).map(job => ({
       job_id: `himalayas-${job.id}`,
       title: job.title,
       company: job.companyName || '',
@@ -116,13 +109,12 @@ async function fetchHimalayas(keywords) {
 // Arbeit Now – free public API
 async function fetchArbeitNow(keywords) {
   try {
-    const query = keywords.join(',') || 'devops';
+    const query = keywords.length > 0 ? keywords.join(',') : 'software developer';
     const res = await axios.get('https://www.arbeitnow.com/api/job-board-api', {
       params: { search: query },
       timeout: 10000,
     });
-    const jobs = res.data.data || [];
-    return jobs
+    return (res.data.data || [])
       .filter(job => job.remote)
       .map(job => ({
         job_id: `arbeitnow-${job.slug}`,
@@ -143,21 +135,17 @@ async function fetchArbeitNow(keywords) {
   }
 }
 
-// helpers
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 function stripHtml(html) {
   return html
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ').trim();
 }
 
 function extractCompany(title) {
-  // WWR title format: "Company: Job Title at Company"
   const match = title.match(/^(.+?):\s+/);
   return match ? match[1].trim() : title;
 }
@@ -174,30 +162,20 @@ function formatSalary(min, max, currency = 'USD') {
   return '';
 }
 
-const DEVOPS_CLOUD_KEYWORDS = [
-  'devops', 'cloud', 'aws', 'azure', 'gcp', 'kubernetes', 'k8s',
-  'terraform', 'ansible', 'docker', 'ci/cd', 'jenkins', 'github actions',
-  'sre', 'site reliability', 'platform engineer', 'infrastructure',
-  'helm', 'argocd', 'gitops', 'prometheus', 'grafana', 'datadog',
-  'linux', 'bash', 'python', 'go', 'pulumi', 'cloudformation',
+// ─── Aggregator ─────────────────────────────────────────────────────────────
+
+const TECH_KEYWORDS = [
+  'software', 'engineer', 'developer', 'frontend', 'backend', 'full stack',
+  'react', 'node', 'python', 'java', 'typescript', 'javascript',
 ];
 
 async function aggregateJobs(filters = {}) {
-  const {
-    keywords = [],
-    tags = [],
-    location = '',
-    jobType = '',
-    experienceLevel = '',
-    remote = true,
-  } = filters;
+  const { keywords = [], tags = [], jobType = '' } = filters;
 
-  // Always mix in DevOps/Cloud base keywords
-  const searchKeywords = keywords.length > 0 ? keywords : DEVOPS_CLOUD_KEYWORDS.slice(0, 6);
-  const searchTags = tags.length > 0 ? tags : ['devops', 'cloud', 'kubernetes', 'aws'];
+  const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
   const [remoteOK, wwr, himalayas, arbeitNow] = await Promise.allSettled([
-    fetchRemoteOK(searchKeywords, searchTags),
+    fetchRemoteOK(searchKeywords, tags),
     fetchWeWorkRemotely(),
     fetchHimalayas(searchKeywords),
     fetchArbeitNow(searchKeywords),
@@ -210,29 +188,31 @@ async function aggregateJobs(filters = {}) {
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
   ];
 
-  // filter by user keywords if provided
+  // Keyword filter (only when user supplied keywords)
   if (keywords.length > 0) {
     const kw = keywords.map(k => k.toLowerCase());
     allJobs = allJobs.filter(job => {
       const text = `${job.title} ${job.company} ${job.description} ${job.tags}`.toLowerCase();
       return kw.some(k => text.includes(k));
     });
-  } else {
-    // Default: keep only DevOps/Cloud relevant jobs
+  }
+
+  // Tag filter
+  if (tags.length > 0) {
+    const tagList = tags.map(t => t.toLowerCase());
     allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.tags}`.toLowerCase();
-      return DEVOPS_CLOUD_KEYWORDS.some(k => text.includes(k));
+      const text = `${job.title} ${job.tags} ${job.description}`.toLowerCase();
+      return tagList.some(t => text.includes(t));
     });
   }
 
-  // filter by job type
   if (jobType) {
     allJobs = allJobs.filter(job =>
       job.job_type.toLowerCase().includes(jobType.toLowerCase())
     );
   }
 
-  // deduplicate by job_id
+  // Deduplicate
   const seen = new Set();
   allJobs = allJobs.filter(job => {
     if (seen.has(job.job_id)) return false;
@@ -243,4 +223,4 @@ async function aggregateJobs(filters = {}) {
   return allJobs;
 }
 
-module.exports = { aggregateJobs, DEVOPS_CLOUD_KEYWORDS };
+module.exports = { aggregateJobs };

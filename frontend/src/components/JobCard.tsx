@@ -7,6 +7,7 @@ const SOURCE_COLORS: Record<string, string> = {
   'We Work Remotely': 'bg-purple-900/50 text-purple-400 border-purple-800',
   Himalayas: 'bg-blue-900/50 text-blue-400 border-blue-800',
   ArbeitNow: 'bg-orange-900/50 text-orange-400 border-orange-800',
+  TheirStack: 'bg-rose-900/50 text-rose-400 border-rose-800',
 }
 
 interface Props {
@@ -23,14 +24,11 @@ export default function JobCard({ job, isSaved, onSave }: Props) {
   return (
     <article className="card p-4 hover:border-slate-700 transition-colors group">
       <div className="flex items-start gap-3">
-        {/* Logo or initials */}
         <div className="w-10 h-10 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center shrink-0 overflow-hidden">
           {job.logo ? (
             <img src={job.logo} alt={job.company} className="w-full h-full object-contain" />
           ) : (
-            <span className="text-sm font-bold text-slate-500">
-              {job.company.charAt(0).toUpperCase()}
-            </span>
+            <span className="text-sm font-bold text-slate-500">{job.company.charAt(0).toUpperCase()}</span>
           )}
         </div>
 
@@ -43,35 +41,24 @@ export default function JobCard({ job, isSaved, onSave }: Props) {
                 <span className="truncate">{job.company}</span>
               </div>
             </div>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <span className={`badge border text-[10px] ${sourceClass}`}>{job.source}</span>
-            </div>
+            <span className={`badge border text-[10px] shrink-0 ${sourceClass}`}>{job.source}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mt-2 text-xs text-slate-500">
             {job.location && (
-              <span className="flex items-center gap-1">
-                <MapPin size={11} />
-                {job.location}
-              </span>
+              <span className="flex items-center gap-1"><MapPin size={11} />{job.location}</span>
             )}
             {job.job_type && (
-              <span className="flex items-center gap-1">
-                <Briefcase size={11} />
-                {job.job_type}
-              </span>
+              <span className="flex items-center gap-1"><Briefcase size={11} />{job.job_type}</span>
             )}
-            {job.salary && (
-              <span className="text-emerald-400 font-medium">{job.salary}</span>
-            )}
+            {job.salary && <span className="text-emerald-400 font-medium">{job.salary}</span>}
           </div>
 
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {tags.map(tag => (
                 <span key={tag} className="flex items-center gap-0.5 badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">
-                  <Tag size={9} />
-                  {tag}
+                  <Tag size={9} />{tag}
                 </span>
               ))}
             </div>
@@ -104,14 +91,13 @@ export default function JobCard({ job, isSaved, onSave }: Props) {
               <ExternalLink size={12} />
               View Job
             </a>
+
             <button
               type="button"
               onClick={() => onSave(job)}
               disabled={isSaved}
               className={`flex items-center gap-1.5 text-xs transition-colors font-medium ml-auto ${
-                isSaved
-                  ? 'text-brand-400 cursor-default'
-                  : 'text-slate-500 hover:text-brand-400'
+                isSaved ? 'text-brand-400 cursor-default' : 'text-slate-500 hover:text-brand-400'
               }`}
             >
               {isSaved ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}

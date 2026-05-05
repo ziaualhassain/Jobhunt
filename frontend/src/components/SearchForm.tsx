@@ -1,11 +1,24 @@
 import { useState } from 'react'
-import { Search, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import type { SearchFilters } from '../types'
 
-const QUICK_TAGS = [
-  'AWS', 'Azure', 'GCP', 'Kubernetes', 'Terraform', 'Docker',
-  'Ansible', 'CI/CD', 'SRE', 'Platform Engineer', 'DevOps',
-  'Helm', 'ArgoCD', 'GitOps', 'Prometheus', 'Grafana', 'Linux',
+const TAG_GROUPS = [
+  {
+    label: 'Roles',
+    tags: ['Frontend', 'Backend', 'Full Stack', 'DevOps', 'Mobile', 'Data Engineer', 'ML / AI', 'QA', 'Platform Engineer', 'SRE'],
+  },
+  {
+    label: 'Languages',
+    tags: ['JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'C#', 'PHP', 'Ruby', 'Swift', 'Kotlin'],
+  },
+  {
+    label: 'Frameworks & Tools',
+    tags: ['React', 'Vue', 'Angular', 'Next.js', 'Node.js', 'Django', 'Spring', '.NET', 'Laravel', 'Flutter'],
+  },
+  {
+    label: 'Cloud & Infra',
+    tags: ['AWS', 'Azure', 'GCP', 'Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'PostgreSQL', 'MongoDB', 'Redis'],
+  },
 ]
 
 const JOB_TYPES = ['Full-time', 'Contract', 'Part-time', 'Freelance']
@@ -19,13 +32,12 @@ interface Props {
 
 export default function SearchForm({ onSearch, loading, initialFilters }: Props) {
   const [keywordInput, setKeywordInput] = useState(initialFilters?.keywords?.join(', ') ?? '')
-  const [selectedTags, setSelectedTags] = useState<string[]>(
-    initialFilters?.tags ?? ['AWS', 'Kubernetes', 'Terraform']
-  )
+  const [selectedTags, setSelectedTags] = useState<string[]>(initialFilters?.tags ?? [])
   const [jobType, setJobType] = useState(initialFilters?.jobType ?? '')
   const [experienceLevel, setExperienceLevel] = useState(initialFilters?.experienceLevel ?? '')
   const [location, setLocation] = useState(initialFilters?.location ?? '')
   const [remote, setRemote] = useState(initialFilters?.remote ?? true)
+  const [showFilters, setShowFilters] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   function toggleTag(tag: string) {
@@ -36,11 +48,7 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const keywords = keywordInput
-      .split(',')
-      .map(k => k.trim())
-      .filter(Boolean)
-
+    const keywords = keywordInput.split(',').map(k => k.trim()).filter(Boolean)
     onSearch({ keywords, tags: selectedTags, jobType, experienceLevel, location, remote })
   }
 
@@ -52,40 +60,69 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
           <input
             type="text"
             className="input pl-9"
-            placeholder="Keywords: terraform, kubernetes, aws... (comma separated)"
+            placeholder="e.g. React developer, Java backend, Python data engineer…"
             value={keywordInput}
             onChange={e => setKeywordInput(e.target.value)}
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition-colors ${
+            showFilters || selectedTags.length > 0
+              ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+              : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+          }`}
+          title="Toggle filters"
+        >
+          <SlidersHorizontal size={15} />
+          {selectedTags.length > 0 && (
+            <span className="text-xs font-medium">{selectedTags.length}</span>
+          )}
+        </button>
         <button type="submit" className="btn-primary flex items-center gap-2 whitespace-nowrap" disabled={loading}>
           <Search size={15} />
           {loading ? 'Searching…' : 'Search Jobs'}
         </button>
       </div>
 
-      {/* Quick tag pills */}
-      <div>
-        <p className="text-xs text-slate-500 mb-2 uppercase tracking-wide font-medium">Quick filters</p>
-        <div className="flex flex-wrap gap-1.5">
-          {QUICK_TAGS.map(tag => (
-            <button
-              key={tag}
-              type="button"
-              onClick={() => toggleTag(tag)}
-              className={`badge cursor-pointer transition-colors border ${
-                selectedTags.includes(tag)
-                  ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-              }`}
-            >
-              {selectedTags.includes(tag) && <X size={10} className="mr-1" />}
-              {tag}
-            </button>
+      {/* Grouped tag pills — shown only when filter panel is open */}
+      {showFilters && (
+        <div className="space-y-2.5 pt-1 border-t border-slate-800">
+          {TAG_GROUPS.map(group => (
+            <div key={group.label}>
+              <p className="text-[10px] text-slate-600 uppercase tracking-wide font-medium mb-1.5">{group.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.tags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`badge cursor-pointer transition-colors border ${
+                      selectedTags.includes(tag)
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {selectedTags.includes(tag) && <X size={9} className="mr-1" />}
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
+          {selectedTags.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedTags([])}
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              Clear {selectedTags.length} selected filter{selectedTags.length !== 1 ? 's' : ''}
+            </button>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Advanced toggle */}
       <button
         type="button"
         onClick={() => setShowAdvanced(v => !v)}
@@ -99,22 +136,14 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
           <div>
             <label className="block text-xs text-slate-500 mb-1">Job Type</label>
-            <select
-              className="input"
-              value={jobType}
-              onChange={e => setJobType(e.target.value)}
-            >
+            <select className="input" value={jobType} onChange={e => setJobType(e.target.value)}>
               <option value="">Any</option>
               {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-slate-500 mb-1">Experience Level</label>
-            <select
-              className="input"
-              value={experienceLevel}
-              onChange={e => setExperienceLevel(e.target.value)}
-            >
+            <select className="input" value={experienceLevel} onChange={e => setExperienceLevel(e.target.value)}>
               <option value="">Any</option>
               {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
@@ -123,7 +152,7 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
             <label className="block text-xs text-slate-500 mb-1">Location</label>
             <input
               className="input"
-              placeholder="e.g. Remote, US, UK"
+              placeholder="e.g. Remote, US, UK, Berlin"
               value={location}
               onChange={e => setLocation(e.target.value)}
             />

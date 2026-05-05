@@ -1,10 +1,11 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { Search, Kanban, Cloud, LogOut, User } from 'lucide-react'
+import { Search, Kanban, Cloud, LogOut } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
+import ProfilePage from './pages/ProfilePage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -31,9 +32,7 @@ export default function App() {
                 end
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                    isActive
-                      ? 'bg-brand-500/20 text-brand-400'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
                   }`
                 }
               >
@@ -44,9 +43,7 @@ export default function App() {
                 to="/tracker"
                 className={({ isActive }) =>
                   `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                    isActive
-                      ? 'bg-brand-500/20 text-brand-400'
-                      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
                   }`
                 }
               >
@@ -54,17 +51,26 @@ export default function App() {
                 Tracker
               </NavLink>
             </nav>
-            <div className="ml-auto flex items-center gap-3">
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <User size={14} />
-                <span>{user.name}</span>
-              </div>
+            <div className="ml-auto flex items-center gap-2">
+              <NavLink
+                to="/profile"
+                className={({ isActive }) =>
+                  `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  }`
+                }
+              >
+                <div className="w-6 h-6 rounded-full bg-brand-500/30 text-brand-300 flex items-center justify-center text-[11px] font-bold uppercase">
+                  {user.name[0]}
+                </div>
+                <span className="hidden sm:inline">{user.name}</span>
+              </NavLink>
               <button
                 onClick={logout}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+                title="Sign out"
               >
                 <LogOut size={14} />
-                Sign out
               </button>
             </div>
           </div>
@@ -75,22 +81,9 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <JobsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/tracker"
-            element={
-              <ProtectedRoute>
-                <TrackerPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
+          <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

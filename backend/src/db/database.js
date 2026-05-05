@@ -64,6 +64,26 @@ async function initDb() {
       filters JSONB NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS theirstack_jobs (
+      id SERIAL PRIMARY KEY,
+      job_id TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      company TEXT NOT NULL,
+      location TEXT,
+      url TEXT,
+      description TEXT,
+      salary TEXT,
+      job_type TEXT,
+      tags TEXT,
+      logo TEXT,
+      date_posted DATE,
+      fetched_at TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // Add preferences column if it doesn't exist yet (idempotent migration)
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
   `);
   console.log('[DB] Schema ready');
 }

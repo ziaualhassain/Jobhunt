@@ -4,29 +4,36 @@ import { Loader2, AlertCircle, Layers, SortAsc } from 'lucide-react'
 import SearchForm from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
-import { searchJobs, saveApplication, getApplications } from '../lib/api'
+import { searchJobs, saveApplication, getApplications, getProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
-import type { SearchFilters } from '../types'
-
-const DEFAULT_FILTERS: Partial<SearchFilters> = {
-  tags: ['DevOps', 'Kubernetes', 'AWS', 'Terraform'],
-  remote: true,
-}
+import type { Job, SearchFilters } from '../types'
 
 type SortKey = 'default' | 'title' | 'company' | 'source'
 
 export default function JobsPage() {
   const qc = useQueryClient()
-  const [filters, setFilters] = useState<Partial<SearchFilters>>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
   const [sort, setSort] = useState<SortKey>('default')
   const [toast, setToast] = useState<string | null>(null)
-  // key forces SearchForm to re-render with new defaults when resume is applied
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
 
+  // Load user preferences to populate default search
+  const { data: profile } = useQuery({
+    queryKey: ['profile'],
+    queryFn: getProfile,
+  })
+
+  const defaultFilters: Partial<SearchFilters> = filters ?? {
+    tags: profile?.preferences?.interests ?? [],
+    keywords: profile?.preferences?.keywords ?? [],
+    experienceLevel: profile?.preferences?.experienceLevel ?? '',
+    remote: profile?.preferences?.remote ?? true,
+  }
+
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['jobs', filters],
-    queryFn: () => searchJobs(filters),
+    queryKey: ['jobs', defaultFilters],
+    queryFn: () => searchJobs(defaultFilters),
     enabled: true,
   })
 
@@ -38,7 +45,7 @@ export default function JobsPage() {
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
   const saveMutation = useMutation({
-    mutationFn: saveApplication,
+    mutationFn: (job: Job) => saveApplication(job),
     onSuccess: (_, job) => {
       qc.invalidateQueries({ queryKey: ['applications'] })
       showToast(`"${job.title}" saved to tracker`)
@@ -81,21 +88,19 @@ export default function JobsPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-slate-100">DevOps &amp; Cloud Jobs</h1>
-        <p className="text-slate-500 text-sm mt-1">Aggregated from RemoteOK, We Work Remotely, Himalayas &amp; more</p>
+        <h1 className="text-2xl font-bold text-slate-100">Find Your Next Tech Role</h1>
+        <p className="text-slate-500 text-sm mt-1">Remote tech jobs aggregated from RemoteOK, We Work Remotely, Himalayas &amp; more</p>
       </div>
 
-      {/* Resume upload — AI matching */}
       <ResumeUpload onAnalyzed={handleResumeAnalyzed} />
 
-      {/* Resume match banner */}
       {resumeFilters && (
         <div className="flex items-center gap-2 text-xs bg-brand-900/20 border border-brand-800 text-brand-300 rounded-lg px-3 py-2">
           <span className="font-medium">Showing resume-matched results</span>
           <span className="text-brand-500">·</span>
-          <span>{filters.keywords?.slice(0, 4).join(', ')}{(filters.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
+          <span>{filters?.keywords?.slice(0, 4).join(', ')}{(filters?.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
           <button
-            onClick={() => { setResumeFilters(null); setFilters(DEFAULT_FILTERS); setSearchKey(k => k + 1) }}
+            onClick={() => { setResumeFilters(null); setFilters(null); setSearchKey(k => k + 1) }}
             className="ml-auto text-brand-500 hover:text-brand-300 underline"
           >
             Clear
@@ -103,9 +108,13 @@ export default function JobsPage() {
         </div>
       )}
 
-      <SearchForm key={searchKey} onSearch={handleSearch} loading={isLoading} initialFilters={resumeFilters ?? undefined} />
+      <SearchForm
+        key={searchKey}
+        onSearch={handleSearch}
+        loading={isLoading}
+        initialFilters={resumeFilters ?? (filters ?? defaultFilters)}
+      />
 
-      {/* Results header */}
       {(data || isLoading) && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-slate-500">
@@ -131,7 +140,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Loading skeleton */}
       {isLoading && (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -165,7 +173,7 @@ export default function JobsPage() {
         <div className="card p-10 text-center">
           <Layers size={32} className="mx-auto text-slate-700 mb-3" />
           <p className="text-slate-400 font-medium">No jobs found</p>
-          <p className="text-slate-600 text-sm mt-1">Try adjusting your keywords or filters</p>
+          <p className="text-slate-600 text-sm mt-1">Try different keywords or remove some filters</p>
         </div>
       )}
 
