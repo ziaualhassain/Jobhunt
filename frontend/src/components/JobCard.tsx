@@ -7,6 +7,7 @@ const SOURCE_COLORS: Record<string, string> = {
   'We Work Remotely': 'bg-purple-900/50 text-purple-400 border-purple-800',
   Himalayas: 'bg-blue-900/50 text-blue-400 border-blue-800',
   ArbeitNow: 'bg-orange-900/50 text-orange-400 border-orange-800',
+  TheirStack: 'bg-rose-900/50 text-rose-400 border-rose-800',
 }
 
 interface Props {
