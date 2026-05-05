@@ -41,7 +41,11 @@ router.put('/', async (req, res) => {
     const { rows } = await pool.query(
       `UPDATE users
        SET name          = COALESCE($1, name),
-           preferences   = COALESCE($2, preferences),
+           preferences   = CASE
+             WHEN $2::text IS NOT NULL
+             THEN preferences || $2::jsonb
+             ELSE preferences
+           END,
            password_hash = $3
        WHERE id = $4
        RETURNING id, email, name, preferences, created_at`,

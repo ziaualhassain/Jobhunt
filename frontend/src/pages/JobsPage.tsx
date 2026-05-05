@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Layers, SortAsc } from 'lucide-react'
 import SearchForm from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
-import { searchJobs, saveApplication, getApplications, getProfile } from '../lib/api'
+import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
 
@@ -12,22 +12,27 @@ type SortKey = 'default' | 'title' | 'company' | 'source'
 
 export default function JobsPage() {
   const qc = useQueryClient()
-  const [filters, setFilters] = useState<Partial<SearchFilters> | null>(() => {
-    try {
-      const saved = localStorage.getItem('jobFilters')
-      return saved ? JSON.parse(saved) : null
-    } catch { return null }
-  })
+  const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
   const [sort, setSort] = useState<SortKey>('default')
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
+  const restoredRef = useRef(false)
 
   // Load user preferences to populate default search
   const { data: profile } = useQuery({
     queryKey: ['profile'],
     queryFn: getProfile,
   })
+
+  // Restore last search from DB once profile loads
+  useEffect(() => {
+    if (!restoredRef.current && profile?.preferences?.lastSearch) {
+      restoredRef.current = true
+      setFilters(profile.preferences.lastSearch)
+      setSearchKey(k => k + 1)
+    }
+  }, [profile])
 
   const defaultFilters: Partial<SearchFilters> = filters ?? {
     tags: profile?.preferences?.interests ?? [],
@@ -70,7 +75,7 @@ export default function JobsPage() {
   function handleSearch(f: Partial<SearchFilters>) {
     setFilters(f)
     setResumeFilters(null)
-    localStorage.setItem('jobFilters', JSON.stringify(f))
+    updateProfile({ preferences: { lastSearch: f as SearchFilters } }).catch(() => {})
   }
 
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
@@ -106,7 +111,7 @@ export default function JobsPage() {
           <span className="text-brand-500">·</span>
           <span>{filters?.keywords?.slice(0, 4).join(', ')}{(filters?.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
           <button
-            onClick={() => { setResumeFilters(null); setFilters(null); localStorage.removeItem('jobFilters'); setSearchKey(k => k + 1) }}
+            onClick={() => { setResumeFilters(null); setFilters(null); setSearchKey(k => k + 1) }}
             className="ml-auto text-brand-500 hover:text-brand-300 underline"
           >
             Clear
