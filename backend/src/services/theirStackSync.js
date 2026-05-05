@@ -23,7 +23,7 @@ async function fetchPage(page) {
       { desc: true, field: 'discovered_at' },
     ],
     page,
-    limit: 100,
+    limit: 25,
     posted_at_max_age_days: 30,
     blur_company_data: false,
     include_total_results: false,
@@ -71,7 +71,7 @@ async function syncTheirStackJobs() {
   console.log('[TheirStack] Starting India job sync…');
   let synced = 0;
 
-  for (let page = 0; page < 3; page++) {
+  for (let page = 0; page < 12; page++) {
     let jobs;
     try {
       jobs = await fetchPage(page);
@@ -124,7 +124,7 @@ async function syncTheirStackJobs() {
     }
 
     console.log(`[TheirStack] Page ${page}: ${jobs.length} jobs`);
-    if (jobs.length < 100) break;
+    if (jobs.length < 25) break;
   }
 
   console.log(`[TheirStack] Sync complete — ${synced} jobs stored`);
