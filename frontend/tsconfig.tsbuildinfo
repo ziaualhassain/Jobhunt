@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/main.tsx","./src/components/ApplicationCard.tsx","./src/components/JobCard.tsx","./src/components/SearchForm.tsx","./src/lib/api.ts","./src/pages/JobsPage.tsx","./src/pages/TrackerPage.tsx","./src/types/index.ts"],"version":"5.9.3"}
