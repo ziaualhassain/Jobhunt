@@ -26,11 +26,12 @@ const EXPERIENCE_LEVELS = ['Junior', 'Mid-level', 'Senior', 'Lead', 'Staff', 'Pr
 
 interface Props {
   onSearch: (filters: Partial<SearchFilters>) => void
+  onClear: () => void
   loading: boolean
   initialFilters?: Partial<SearchFilters>
 }
 
-export default function SearchForm({ onSearch, loading, initialFilters }: Props) {
+export default function SearchForm({ onSearch, onClear, loading, initialFilters }: Props) {
   const [keywordInput, setKeywordInput] = useState(initialFilters?.keywords?.join(', ') ?? '')
   const [selectedTags, setSelectedTags] = useState<string[]>(initialFilters?.tags ?? [])
   const [jobType, setJobType] = useState(initialFilters?.jobType ?? '')
@@ -39,6 +40,9 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
   const [remote, setRemote] = useState(initialFilters?.remote ?? true)
   const [showFilters, setShowFilters] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const hasActiveFilters = keywordInput.trim() || selectedTags.length > 0 || location.trim() ||
+    jobType || experienceLevel || !remote
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -50,6 +54,16 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
     e.preventDefault()
     const keywords = keywordInput.split(',').map(k => k.trim()).filter(Boolean)
     onSearch({ keywords, tags: selectedTags, jobType, experienceLevel, location, remote })
+  }
+
+  function handleClear() {
+    setKeywordInput('')
+    setSelectedTags([])
+    setJobType('')
+    setExperienceLevel('')
+    setLocation('')
+    setRemote(true)
+    onClear()
   }
 
   return (
@@ -89,6 +103,16 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
             <span className="text-xs font-medium">{selectedTags.length}</span>
           )}
         </button>
+        {hasActiveFilters && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-500 text-sm transition-colors whitespace-nowrap"
+          >
+            <X size={14} />
+            Clear
+          </button>
+        )}
         <button type="submit" className="btn-primary flex items-center gap-2 whitespace-nowrap" disabled={loading}>
           <Search size={15} />
           {loading ? 'Searching…' : 'Search Jobs'}

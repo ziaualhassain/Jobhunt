@@ -78,6 +78,12 @@ export default function JobsPage() {
     updateProfile({ preferences: { lastSearch: f as SearchFilters } }).catch(() => {})
   }
 
+  function handleClear() {
+    setFilters(null)
+    setResumeFilters(null)
+    // intentionally not saving to DB — clear is a temporary session action
+  }
+
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
     const f: Partial<SearchFilters> = {
       keywords: analysis.searchKeywords,
@@ -122,6 +128,7 @@ export default function JobsPage() {
       <SearchForm
         key={searchKey}
         onSearch={handleSearch}
+        onClear={handleClear}
         loading={isLoading}
         initialFilters={resumeFilters ?? (filters ?? defaultFilters)}
       />
