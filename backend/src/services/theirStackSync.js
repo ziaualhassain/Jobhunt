@@ -76,7 +76,8 @@ async function syncTheirStackJobs() {
     try {
       jobs = await fetchPage(page);
     } catch (err) {
-      console.error(`[TheirStack] Page ${page} failed:`, err.message);
+      const body = err.response?.data;
+      console.error(`[TheirStack] Page ${page} failed (${err.response?.status ?? 'network'}):`, body ?? err.message);
       break;
     }
     if (jobs.length === 0) break;
