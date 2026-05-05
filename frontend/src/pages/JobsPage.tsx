@@ -3,7 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2, AlertCircle, Layers, SortAsc } from 'lucide-react'
 import SearchForm from '../components/SearchForm'
 import JobCard from '../components/JobCard'
+import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications } from '../lib/api'
+import type { ResumeAnalysis } from '../lib/api'
 import type { SearchFilters } from '../types'
 
 const DEFAULT_FILTERS: Partial<SearchFilters> = {
@@ -18,6 +20,9 @@ export default function JobsPage() {
   const [filters, setFilters] = useState<Partial<SearchFilters>>(DEFAULT_FILTERS)
   const [sort, setSort] = useState<SortKey>('default')
   const [toast, setToast] = useState<string | null>(null)
+  // key forces SearchForm to re-render with new defaults when resume is applied
+  const [searchKey, setSearchKey] = useState(0)
+  const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['jobs', filters],
@@ -52,6 +57,20 @@ export default function JobsPage() {
 
   function handleSearch(f: Partial<SearchFilters>) {
     setFilters(f)
+    setResumeFilters(null)
+  }
+
+  function handleResumeAnalyzed(analysis: ResumeAnalysis) {
+    const f: Partial<SearchFilters> = {
+      keywords: analysis.searchKeywords,
+      tags: analysis.skills.slice(0, 6),
+      experienceLevel: analysis.experienceLevel,
+      remote: true,
+    }
+    setResumeFilters(f)
+    setFilters(f)
+    setSearchKey(k => k + 1)
+    showToast(`Searching ${analysis.searchKeywords.length} keywords from your resume`)
   }
 
   const jobs = [...(data?.jobs ?? [])]
@@ -60,13 +79,31 @@ export default function JobsPage() {
   else if (sort === 'source') jobs.sort((a, b) => a.source.localeCompare(b.source))
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-slate-100">DevOps &amp; Cloud Jobs</h1>
         <p className="text-slate-500 text-sm mt-1">Aggregated from RemoteOK, We Work Remotely, Himalayas &amp; more</p>
       </div>
 
-      <SearchForm onSearch={handleSearch} loading={isLoading} />
+      {/* Resume upload — AI matching */}
+      <ResumeUpload onAnalyzed={handleResumeAnalyzed} />
+
+      {/* Resume match banner */}
+      {resumeFilters && (
+        <div className="flex items-center gap-2 text-xs bg-brand-900/20 border border-brand-800 text-brand-300 rounded-lg px-3 py-2">
+          <span className="font-medium">Showing resume-matched results</span>
+          <span className="text-brand-500">·</span>
+          <span>{filters.keywords?.slice(0, 4).join(', ')}{(filters.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
+          <button
+            onClick={() => { setResumeFilters(null); setFilters(DEFAULT_FILTERS); setSearchKey(k => k + 1) }}
+            className="ml-auto text-brand-500 hover:text-brand-300 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      <SearchForm key={searchKey} onSearch={handleSearch} loading={isLoading} initialFilters={resumeFilters ?? undefined} />
 
       {/* Results header */}
       {(data || isLoading) && (
@@ -112,7 +149,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Error */}
       {isError && (
         <div className="card p-5 flex items-center gap-3 text-red-400 border-red-900">
           <AlertCircle size={18} />
@@ -125,7 +161,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Empty */}
       {!isLoading && !isError && jobs.length === 0 && data && (
         <div className="card p-10 text-center">
           <Layers size={32} className="mx-auto text-slate-700 mb-3" />
@@ -134,7 +169,6 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Job grid */}
       {!isLoading && jobs.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {jobs.map(job => (
@@ -148,9 +182,8 @@ export default function JobsPage() {
         </div>
       )}
 
-      {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 text-slate-200 text-sm px-4 py-2.5 rounded-xl shadow-xl z-50 animate-fade-in">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 border border-slate-700 text-slate-200 text-sm px-4 py-2.5 rounded-xl shadow-xl z-50">
           {toast}
         </div>
       )}

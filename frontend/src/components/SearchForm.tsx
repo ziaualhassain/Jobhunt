@@ -14,15 +14,18 @@ const EXPERIENCE_LEVELS = ['Junior', 'Mid-level', 'Senior', 'Lead', 'Staff', 'Pr
 interface Props {
   onSearch: (filters: Partial<SearchFilters>) => void
   loading: boolean
+  initialFilters?: Partial<SearchFilters>
 }
 
-export default function SearchForm({ onSearch, loading }: Props) {
-  const [keywordInput, setKeywordInput] = useState('')
-  const [selectedTags, setSelectedTags] = useState<string[]>(['AWS', 'Kubernetes', 'Terraform'])
-  const [jobType, setJobType] = useState('')
-  const [experienceLevel, setExperienceLevel] = useState('')
-  const [location, setLocation] = useState('')
-  const [remote, setRemote] = useState(true)
+export default function SearchForm({ onSearch, loading, initialFilters }: Props) {
+  const [keywordInput, setKeywordInput] = useState(initialFilters?.keywords?.join(', ') ?? '')
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    initialFilters?.tags ?? ['AWS', 'Kubernetes', 'Terraform']
+  )
+  const [jobType, setJobType] = useState(initialFilters?.jobType ?? '')
+  const [experienceLevel, setExperienceLevel] = useState(initialFilters?.experienceLevel ?? '')
+  const [location, setLocation] = useState(initialFilters?.location ?? '')
+  const [remote, setRemote] = useState(initialFilters?.remote ?? true)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   function toggleTag(tag: string) {
