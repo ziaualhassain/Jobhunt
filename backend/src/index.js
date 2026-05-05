@@ -19,6 +19,18 @@ app.use('/api/resume', resumeRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
+const REQUIRED_ENV = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'JWT_SECRET'];
+const missing = REQUIRED_ENV.filter(k => !process.env[k]);
+if (missing.length) {
+  console.error(`Missing required env vars: ${missing.join(', ')}`);
+  console.error('Copy backend/.env.example to backend/.env and fill in the values.');
+  process.exit(1);
+}
+
 initDb()
   .then(() => app.listen(PORT, () => console.log(`JobHunt API running on http://localhost:${PORT}`)))
-  .catch(err => { console.error('Database init failed:', err.message); process.exit(1); });
+  .catch(err => {
+    console.error('Database init failed:', err.message || err.code || err);
+    console.error(err);
+    process.exit(1);
+  });
