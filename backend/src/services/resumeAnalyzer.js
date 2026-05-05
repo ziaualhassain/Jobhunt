@@ -22,16 +22,16 @@ async function extractText(buffer, mimetype) {
 
 // ─── Shared prompt ──────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are an expert technical recruiter specializing in DevOps and Cloud infrastructure roles.
+const SYSTEM_PROMPT = `You are an expert technical recruiter with broad knowledge of software engineering, web development, mobile, data, DevOps, and cloud roles.
 Analyze the resume text and return ONLY a JSON object with these exact fields:
 {
-  "skills": ["list of technical skills and tools"],
+  "skills": ["list of technical skills, languages, frameworks, and tools"],
   "experienceLevel": "one of: Junior | Mid-level | Senior | Lead | Staff | Principal",
   "yearsOfExperience": <number>,
-  "jobTitles": ["suggested DevOps/Cloud job titles this person suits"],
-  "searchKeywords": ["8-12 lowercase keywords for job searching"],
-  "cloudPlatforms": ["cloud platforms mentioned: AWS, Azure, GCP, etc."],
-  "summary": "one sentence summary for job matching"
+  "jobTitles": ["4-6 specific job titles this person is best suited for"],
+  "searchKeywords": ["8-12 lowercase keywords optimised for job searching"],
+  "cloudPlatforms": ["cloud platforms or infrastructure tools mentioned, empty array if none"],
+  "summary": "one sentence summary of this person's profile for job matching"
 }
 Return ONLY the JSON object, no markdown, no explanation.`;
 

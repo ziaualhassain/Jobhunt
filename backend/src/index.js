@@ -7,6 +7,7 @@ const jobsRouter = require('./routes/jobs');
 const applicationsRouter = require('./routes/applications');
 const resumeRouter = require('./routes/resume');
 const authRouter = require('./routes/auth');
+const profileRouter = require('./routes/profile');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -15,6 +16,7 @@ app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json());
 
 app.use('/api/auth', authRouter);
+app.use('/api/profile', profileRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/applications', applicationsRouter);
 app.use('/api/resume', resumeRouter);

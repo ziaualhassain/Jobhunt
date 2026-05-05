@@ -65,6 +65,10 @@ async function initDb() {
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // Add preferences column if it doesn't exist yet (idempotent migration)
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
+  `);
   console.log('[DB] Schema ready');
 }
 
