@@ -45,12 +45,13 @@ export default function JobsPage() {
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
   const saveMutation = useMutation({
-    mutationFn: saveApplication,
-    onSuccess: (_, job) => {
+    mutationFn: ({ job, status }: { job: Job; status?: 'saved' | 'applied' }) =>
+      saveApplication(job, status),
+    onSuccess: (_, { job }) => {
       qc.invalidateQueries({ queryKey: ['applications'] })
       showToast(`"${job.title}" saved to tracker`)
     },
-    onError: (err: unknown) => {
+    onError: (err: unknown, { job }) => {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       if (msg === 'Job already saved') showToast('Already in your tracker')
       else showToast('Failed to save job')
@@ -184,7 +185,7 @@ export default function JobsPage() {
               key={job.job_id}
               job={job}
               isSaved={savedIds.has(job.job_id)}
-              onSave={j => saveMutation.mutate(j)}
+              onSave={(j, status) => saveMutation.mutate({ job: j, status })}
             />
           ))}
         </div>
