@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, X, ChevronDown, ChevronUp, SlidersHorizontal } from 'lucide-react'
 import type { SearchFilters } from '../types'
 
 const TAG_GROUPS = [
@@ -37,6 +37,7 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
   const [experienceLevel, setExperienceLevel] = useState(initialFilters?.experienceLevel ?? '')
   const [location, setLocation] = useState(initialFilters?.location ?? '')
   const [remote, setRemote] = useState(initialFilters?.remote ?? true)
+  const [showFilters, setShowFilters] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   function toggleTag(tag: string) {
@@ -64,46 +65,62 @@ export default function SearchForm({ onSearch, loading, initialFilters }: Props)
             onChange={e => setKeywordInput(e.target.value)}
           />
         </div>
+        <button
+          type="button"
+          onClick={() => setShowFilters(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition-colors ${
+            showFilters || selectedTags.length > 0
+              ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+              : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+          }`}
+          title="Toggle filters"
+        >
+          <SlidersHorizontal size={15} />
+          {selectedTags.length > 0 && (
+            <span className="text-xs font-medium">{selectedTags.length}</span>
+          )}
+        </button>
         <button type="submit" className="btn-primary flex items-center gap-2 whitespace-nowrap" disabled={loading}>
           <Search size={15} />
           {loading ? 'Searching…' : 'Search Jobs'}
         </button>
       </div>
 
-      {/* Grouped tag pills */}
-      <div className="space-y-2.5">
-        {TAG_GROUPS.map(group => (
-          <div key={group.label}>
-            <p className="text-[10px] text-slate-600 uppercase tracking-wide font-medium mb-1.5">{group.label}</p>
-            <div className="flex flex-wrap gap-1.5">
-              {group.tags.map(tag => (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => toggleTag(tag)}
-                  className={`badge cursor-pointer transition-colors border ${
-                    selectedTags.includes(tag)
-                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
-                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
-                  }`}
-                >
-                  {selectedTags.includes(tag) && <X size={9} className="mr-1" />}
-                  {tag}
-                </button>
-              ))}
+      {/* Grouped tag pills — shown only when filter panel is open */}
+      {showFilters && (
+        <div className="space-y-2.5 pt-1 border-t border-slate-800">
+          {TAG_GROUPS.map(group => (
+            <div key={group.label}>
+              <p className="text-[10px] text-slate-600 uppercase tracking-wide font-medium mb-1.5">{group.label}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {group.tags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => toggleTag(tag)}
+                    className={`badge cursor-pointer transition-colors border ${
+                      selectedTags.includes(tag)
+                        ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {selectedTags.includes(tag) && <X size={9} className="mr-1" />}
+                    {tag}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
-
-      {selectedTags.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setSelectedTags([])}
-          className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
-        >
-          Clear {selectedTags.length} selected filter{selectedTags.length !== 1 ? 's' : ''}
-        </button>
+          ))}
+          {selectedTags.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSelectedTags([])}
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              Clear {selectedTags.length} selected filter{selectedTags.length !== 1 ? 's' : ''}
+            </button>
+          )}
+        </div>
       )}
 
       <button
