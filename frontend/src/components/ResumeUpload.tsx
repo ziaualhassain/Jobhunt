@@ -101,7 +101,7 @@ export default function ResumeUpload({ onAnalyzed }: Props) {
           {mutation.isError && (
             <div className="flex items-start gap-2 text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg p-3">
               <AlertCircle size={15} className="mt-0.5 shrink-0" />
-              <span>{(mutation.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Analysis failed. Make sure ANTHROPIC_API_KEY is set in backend/.env'}</span>
+              <span>{(mutation.error as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Could not reach the backend. Make sure the server is running (npm run dev from the project root).'}</span>
             </div>
           )}
 
