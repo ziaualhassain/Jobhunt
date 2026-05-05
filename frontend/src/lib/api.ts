@@ -85,6 +85,27 @@ export async function saveApplication(job: Job): Promise<Application> {
   return res.data;
 }
 
+export async function addCustomJob(data: {
+  title: string
+  company: string
+  status: ApplicationStatus
+  location?: string
+  url?: string
+  salary?: string
+  job_type?: string
+  tags?: string
+  notes?: string
+}): Promise<Application> {
+  const job_id = `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const res = await api.post('/applications', {
+    job_id,
+    source: 'Manual',
+    description: '',
+    ...data,
+  });
+  return res.data;
+}
+
 export async function updateApplication(
   id: number,
   data: { status?: ApplicationStatus; notes?: string }

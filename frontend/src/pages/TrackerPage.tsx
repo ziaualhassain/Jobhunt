@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Kanban, TrendingUp } from 'lucide-react'
-import { getApplications, updateApplication, deleteApplication, getStats } from '../lib/api'
+import { Loader2, Kanban, TrendingUp, Plus } from 'lucide-react'
+import { getApplications, updateApplication, deleteApplication, getStats, addCustomJob } from '../lib/api'
 import ApplicationCard from '../components/ApplicationCard'
+import AddJobModal from '../components/AddJobModal'
 import type { Application, ApplicationStatus } from '../types'
 import { STATUS_CONFIG } from '../types'
 
@@ -14,6 +15,15 @@ export default function TrackerPage() {
   const qc = useQueryClient()
   const [draggingId, setDraggingId] = useState<number | null>(null)
   const [dragOverCol, setDragOverCol] = useState<ApplicationStatus | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+
+  const addMutation = useMutation({
+    mutationFn: addCustomJob,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['applications'] })
+      qc.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
 
   const { data: applications = [], isLoading } = useQuery({
     queryKey: ['applications'],
@@ -94,14 +104,24 @@ export default function TrackerPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-          <Kanban size={22} className="text-brand-400" />
-          Application Tracker
-        </h1>
-        <p className="text-slate-500 text-sm mt-1">
-          {stats?.total ?? 0} total · drag cards between columns to update status
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
+            <Kanban size={22} className="text-brand-400" />
+            Application Tracker
+          </h1>
+          <p className="text-slate-500 text-sm mt-1">
+            {stats?.total ?? 0} total · drag cards between columns to update status
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="btn-primary flex items-center gap-2 px-4 py-2 text-sm shrink-0"
+        >
+          <Plus size={15} />
+          Add Job
+        </button>
       </div>
 
       {/* Stats row */}
@@ -182,6 +202,13 @@ export default function TrackerPage() {
             })}
           </div>
         </div>
+      )}
+
+      {showAddModal && (
+        <AddJobModal
+          onClose={() => setShowAddModal(false)}
+          onSubmit={async data => { await addMutation.mutateAsync(data) }}
+        />
       )}
     </div>
   )
