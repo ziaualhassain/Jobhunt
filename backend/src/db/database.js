@@ -15,6 +15,18 @@ const pool = new Pool({
 });
 
 async function initDb() {
+  // Verify connectivity before running DDL
+  try {
+    await pool.query('SELECT 1');
+  } catch (err) {
+    throw new Error(
+      `Cannot connect to PostgreSQL: ${err.message || err.code || JSON.stringify(err)}\n` +
+      `  Host: ${process.env.DB_HOST}:${process.env.DB_PORT || 25881}\n` +
+      `  User: ${process.env.DB_USER}\n` +
+      `  SSL:  rejectUnauthorized=true`
+    );
+  }
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
