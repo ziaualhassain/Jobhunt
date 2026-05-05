@@ -1,7 +1,33 @@
 import axios from 'axios';
 import type { Application, ApplicationStatus, Job, SearchFilters } from '../types';
+import type { User } from '../context/AuthContext';
 
 const api = axios.create({ baseURL: '/api' });
+
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function loginUser(email: string, password: string): Promise<{ token: string; user: User }> {
+  const res = await api.post('/auth/login', { email, password });
+  return res.data;
+}
+
+export async function registerUser(name: string, email: string, password: string): Promise<{ token: string; user: User }> {
+  const res = await api.post('/auth/register', { name, email, password });
+  return res.data;
+}
+
+export async function getMe(): Promise<User> {
+  const res = await api.get('/auth/me');
+  return res.data;
+}
+
+// ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {
   const params: Record<string, string> = {};
@@ -14,6 +40,8 @@ export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ job
   const res = await api.get('/jobs/search', { params });
   return res.data;
 }
+
+// ── Applications ──────────────────────────────────────────────────────────────
 
 export async function getApplications(status?: ApplicationStatus): Promise<Application[]> {
   const params = status ? { status } : {};
@@ -42,6 +70,8 @@ export async function getStats(): Promise<{ total: number; byStatus: { status: s
   const res = await api.get('/applications/stats/summary');
   return res.data;
 }
+
+// ── Resume ────────────────────────────────────────────────────────────────────
 
 export interface ResumeAnalysis {
   skills: string[];
