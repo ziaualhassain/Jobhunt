@@ -166,6 +166,7 @@ const STOP_WORDS = new Set([
   'architecture', 'architectures', 'design', 'driven', 'native', 'based',
   'development', 'engineering', 'management', 'practices', 'principles',
   'concepts', 'patterns', 'strategy', 'strategies', 'framework', 'frameworks',
+  'developer', 'engineer', 'specialist', 'professional',
   'and', 'for', 'the', 'with', 'using',
 ]);
 

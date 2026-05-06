@@ -8,6 +8,7 @@ const STOP_WORDS = new Set([
   'architecture', 'architectures', 'design', 'driven', 'native', 'based',
   'development', 'engineering', 'management', 'practices', 'principles',
   'concepts', 'patterns', 'strategy', 'strategies', 'framework', 'frameworks',
+  'developer', 'engineer', 'specialist', 'professional',
   'and', 'for', 'the', 'with', 'using',
 ]);
 
@@ -19,7 +20,7 @@ async function getTheirStackJobs(filters) {
   const params = [];
 
   if (keywords.length > 0) {
-    // Each keyword's significant words must all appear (AND), keywords are OR-ed
+    // Each keyword's words are OR-ed (any word match), keywords are also OR-ed
     const kwConditions = keywords.flatMap(kw => {
       const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
       if (words.length === 0) return []; // skip all-stop-word keywords
@@ -28,7 +29,7 @@ async function getTheirStackJobs(filters) {
         const i = params.length;
         return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
       });
-      return [`(${wordClauses.join(' AND ')})`];
+      return [`(${wordClauses.join(' OR ')})`]; // OR within keyword — consistent with matchesKeywords
     });
     if (kwConditions.length > 0) conditions.push(`(${kwConditions.join(' OR ')})`);
   }
