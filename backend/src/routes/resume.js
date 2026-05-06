@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { extractText, analyzeResume, enhanceResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
+const { extractText, analyzeResume, enhanceResume, rewriteResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
 
 const router = express.Router();
 
@@ -85,6 +85,35 @@ router.post('/enhance', upload.single('resume'), async (req, res) => {
     }
     if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
     res.status(500).json({ error: err.message || 'Resume enhancement failed' });
+  }
+});
+
+// POST /api/resume/rewrite
+router.post('/rewrite', upload.single('resume'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const targetRole = (req.body.targetRole || '').trim();
+  if (!targetRole) return res.status(400).json({ error: 'targetRole is required' });
+
+  const achievements = (req.body.achievements || '').trim();
+  const projects     = (req.body.projects || '').trim();
+  const extraSkills  = (req.body.extraSkills || '').trim();
+  const targetSkills = (req.body.targetSkills || '').trim();
+  let missingKeywords = [];
+  try { missingKeywords = JSON.parse(req.body.missingKeywords || '[]'); } catch {}
+
+  try {
+    const text = await extractText(req.file.buffer, req.file.mimetype);
+    if (!text || text.trim().length < 50)
+      return res.status(422).json({ error: 'Could not extract enough text from the file' });
+
+    const result = await rewriteResume(text, targetRole, targetSkills, achievements, projects, extraSkills, missingKeywords);
+    res.json(result);
+  } catch (err) {
+    console.error('[Resume Rewrite] failed:', err.message);
+    if (err.message === 'NO_BACKEND')
+      return res.status(503).json({ error: 'No AI backend configured. Install Ollama or set ANTHROPIC_API_KEY.' });
+    if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
+    res.status(500).json({ error: err.message || 'Resume rewrite failed' });
   }
 });
 

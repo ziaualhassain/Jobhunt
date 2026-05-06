@@ -182,6 +182,40 @@ export async function enhanceResume(
   return res.data
 }
 
+export interface GeneratedResume {
+  name: string
+  contact: { email: string; phone: string; location: string; linkedin: string; github: string; website: string }
+  summary: string
+  experience: { title: string; company: string; location: string; period: string; bullets: string[] }[]
+  skills: string[]
+  education: { degree: string; institution: string; year: string }[]
+  projects: { name: string; description: string; tech: string }[]
+  certifications: string[]
+}
+
+export async function rewriteResume(
+  file: File,
+  targetRole: string,
+  targetSkills: string,
+  achievements: string,
+  projects: string,
+  extraSkills: string,
+  missingKeywords: string[],
+): Promise<GeneratedResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('targetRole', targetRole)
+  form.append('targetSkills', targetSkills)
+  form.append('achievements', achievements)
+  form.append('projects', projects)
+  form.append('extraSkills', extraSkills)
+  form.append('missingKeywords', JSON.stringify(missingKeywords))
+  const res = await api.post('/resume/rewrite', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
 // ── Interview Coach ───────────────────────────────────────────────────────────
 
 export interface InterviewSession {
