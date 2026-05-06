@@ -3,7 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 const { pool } = require('../db/database');
 const requireAuth = require('../middleware/auth');
-const { generatePlan, parseUpload } = require('../services/prepCoach');
+const { generatePlan, parseUpload, structureFromMessage } = require('../services/prepCoach');
 
 router.use(requireAuth);
 
@@ -146,6 +146,43 @@ router.post('/plans/upload', upload.single('file'), async (req, res) => {
     res.status(201).json({ id: plan.id, title: plan.title, taskCount: tasks.length });
   } catch (err) {
     console.error('[Prep upload]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/prep/plans/from-message  (convert chat message → structured plan)
+router.post('/plans/from-message', async (req, res) => {
+  const { content, role = '', company = '', title = '' } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: 'content is required' });
+  try {
+    let aiPlan;
+    try {
+      aiPlan = await structureFromMessage(content.trim(), role, company);
+    } catch (e) {
+      if (e.message === 'NO_BACKEND') return res.status(503).json({ error: 'No AI backend. Install Ollama or set ANTHROPIC_API_KEY.' });
+      throw e;
+    }
+
+    const planTitle = title.trim() || aiPlan.title || (role ? `${role} Prep Plan` : 'Chat Plan');
+    const { rows: [plan] } = await pool.query(
+      `INSERT INTO prep_plans (user_id,title,goal,company,role,timeline_weeks,source)
+       VALUES ($1,$2,$3,$4,$5,8,'chat') RETURNING *`,
+      [req.user.id, planTitle, aiPlan.goal || '', company, role],
+    );
+
+    for (const cat of (aiPlan.categories || [])) {
+      for (const task of (cat.tasks || [])) {
+        await pool.query(
+          `INSERT INTO prep_tasks (plan_id,category,title,description,estimated_hours,resources,priority)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [plan.id, cat.name || 'General', task.title, task.description || '',
+           task.estimated_hours || 1, task.resources || '', task.priority || 'medium'],
+        );
+      }
+    }
+    res.status(201).json({ id: plan.id, title: plan.title });
+  } catch (err) {
+    console.error('[Prep from-message]', err.message);
     res.status(500).json({ error: err.message });
   }
 });

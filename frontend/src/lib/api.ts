@@ -316,3 +316,10 @@ export async function checkInToday(planId: number): Promise<{ streak: PrepStreak
   const res = await api.post(`/prep/plans/${planId}/checkin`, {})
   return res.data
 }
+
+export async function addPlanFromMessage(data: {
+  content: string; role?: string; company?: string; title?: string
+}): Promise<{ id: number; title: string }> {
+  const res = await api.post('/prep/plans/from-message', data)
+  return res.data
+}

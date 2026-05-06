@@ -200,4 +200,88 @@ async function parseUpload(buffer, mimetype, originalname) {
   throw new Error('Unsupported file type. Use JSON, CSV, XLSX, DOCX, or TXT.');
 }
 
-module.exports = { generatePlan, parseUpload };
+// ─── Convert chat message into structured plan ────────────────────────────────
+
+const STRUCTURE_SYSTEM = `You are an expert interview preparation coach.
+Convert the provided preparation advice or study plan text into a structured JSON plan.
+Extract all topics, tasks, and activities. Group them into logical categories.
+Be practical — if a week-by-week schedule is given, map each week to a category.`;
+
+async function structureFromMessageOllama(content, role, company) {
+  const model = process.env.OLLAMA_MODEL || 'llama3.2';
+  const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+  const context = [role && `Role: ${role}`, company && `Company: ${company}`].filter(Boolean).join('\n');
+  const prompt = `${context ? context + '\n\n' : ''}Convert the following into a structured preparation plan:\n\n${content.slice(0, 8000)}\n\n${PLAN_JSON_TEMPLATE}`;
+  const res = await axios.post(`${baseUrl}/api/chat`, {
+    model, format: 'json', stream: false,
+    messages: [{ role: 'system', content: STRUCTURE_SYSTEM }, { role: 'user', content: prompt }],
+    options: { temperature: 0.3 },
+  }, { timeout: 180_000 });
+  const text = res.data?.message?.content;
+  if (!text) throw new Error('Empty response from Ollama');
+  return JSON.parse(text);
+}
+
+async function structureFromMessageClaude(content, role, company) {
+  const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const schema = {
+    type: 'object',
+    properties: {
+      title: { type: 'string' },
+      goal: { type: 'string' },
+      categories: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+            tasks: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  estimated_hours: { type: 'number' },
+                  resources: { type: 'string' },
+                  priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+                },
+                required: ['title', 'description', 'estimated_hours', 'resources', 'priority'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['name', 'priority', 'tasks'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['title', 'goal', 'categories'],
+    additionalProperties: false,
+  };
+  const context = [role && `Role: ${role}`, company && `Company: ${company}`].filter(Boolean).join('\n');
+  const userMsg = `${context ? context + '\n\n' : ''}Convert the following preparation advice into a structured plan:\n\n${content.slice(0, 12000)}`;
+  const res = await client.messages.create({
+    model: 'claude-opus-4-7', max_tokens: 4096,
+    thinking: { type: 'adaptive' },
+    system: [{ type: 'text', text: STRUCTURE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userMsg }],
+    output_config: { format: { type: 'json_schema', json_schema: { name: 'prep_plan', schema } } },
+  });
+  return JSON.parse(res.content.find(b => b.type === 'text').text);
+}
+
+async function structureFromMessage(content, role, company) {
+  if (await isOllamaAvailable()) {
+    console.log('[Prep] Structuring chat message via Ollama');
+    return structureFromMessageOllama(content, role, company);
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    console.log('[Prep] Structuring chat message via Claude');
+    return structureFromMessageClaude(content, role, company);
+  }
+  throw new Error('NO_BACKEND');
+}
+
+module.exports = { generatePlan, parseUpload, structureFromMessage };
