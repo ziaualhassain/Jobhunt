@@ -235,3 +235,91 @@ export async function sendInterviewMessage(sessionId: number, message: string): 
 export async function deleteInterviewSession(id: number): Promise<void> {
   await api.delete(`/interview/sessions/${id}`)
 }
+
+// ── Preparation Tracker ───────────────────────────────────────────────────────
+
+export interface PrepPlan {
+  id: number
+  title: string
+  goal: string
+  company: string
+  role: string
+  timeline_weeks: number
+  source: string
+  total_tasks?: number
+  completed_tasks?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PrepTask {
+  id: number
+  plan_id: number
+  category: string
+  title: string
+  description: string
+  estimated_hours: number
+  resources: string
+  priority: 'high' | 'medium' | 'low'
+  completed: boolean
+  completed_at: string | null
+  created_at: string
+}
+
+export interface PrepStreak {
+  current: number
+  longest: number
+}
+
+export interface PrepPlanDetail extends PrepPlan {
+  tasks: PrepTask[]
+  checkins: string[]
+  streak: PrepStreak
+  todayCheckin: boolean
+}
+
+export async function listPrepPlans(): Promise<PrepPlan[]> {
+  const res = await api.get('/prep/plans')
+  return res.data
+}
+
+export async function getPrepPlan(id: number): Promise<PrepPlanDetail> {
+  const res = await api.get(`/prep/plans/${id}`)
+  return res.data
+}
+
+export async function generatePrepPlan(data: {
+  role: string; company?: string; timelineWeeks?: number; focusAreas?: string
+}): Promise<{ id: number; title: string }> {
+  const res = await api.post('/prep/plans/generate', data)
+  return res.data
+}
+
+export async function uploadPrepPlan(file: File, planTitle?: string): Promise<{ id: number; title: string; taskCount: number }> {
+  const form = new FormData()
+  form.append('file', file)
+  if (planTitle) form.append('planTitle', planTitle)
+  const res = await api.post('/prep/plans/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data
+}
+
+export async function deletePrepPlan(id: number): Promise<void> {
+  await api.delete(`/prep/plans/${id}`)
+}
+
+export async function togglePrepTask(taskId: number, completed: boolean): Promise<PrepTask> {
+  const res = await api.patch(`/prep/tasks/${taskId}`, { completed })
+  return res.data
+}
+
+export async function checkInToday(planId: number): Promise<{ streak: PrepStreak; todayCheckin: boolean }> {
+  const res = await api.post(`/prep/plans/${planId}/checkin`, {})
+  return res.data
+}
+
+export async function addPlanFromMessage(data: {
+  content: string; role?: string; company?: string; title?: string
+}): Promise<{ id: number; title: string }> {
+  const res = await api.post('/prep/plans/from-message', data)
+  return res.data
+}

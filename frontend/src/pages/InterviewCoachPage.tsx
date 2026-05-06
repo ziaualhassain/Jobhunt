@@ -2,13 +2,27 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare, Plus, Trash2, Send, Loader2, Bot, User,
-  ChevronRight, Briefcase, Building2, X,
+  ChevronRight, Briefcase, Building2, X, TrendingUp, CheckCircle2,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import {
   listInterviewSessions, createInterviewSession,
   getInterviewSession, sendInterviewMessage, deleteInterviewSession,
+  addPlanFromMessage,
 } from '../lib/api'
-import type { InterviewSession, InterviewMessage } from '../lib/api'
+import type { InterviewMessage } from '../lib/api'
+
+function looksLikePlan(text: string): boolean {
+  return (
+    /week\s*\d/i.test(text) ||
+    /\bday\s+\d+\b/i.test(text) ||
+    /phase\s+\d/i.test(text) ||
+    /(study|prep(aration)?|learning|interview)\s+plan/i.test(text) ||
+    /\broadmap\b/i.test(text) ||
+    /week[- ]by[- ]week/i.test(text) ||
+    (/\bweek\b/i.test(text) && /\b(study|practice|learn|review|focus)\b/i.test(text))
+  )
+}
 
 const MODE_OPTIONS = [
   { value: 'mock',      label: 'Mock Interview',     desc: 'Full interview simulation with Q&A' },
@@ -93,8 +107,15 @@ function NewSessionModal({ onClose, onCreate }: {
   )
 }
 
-function MessageBubble({ msg }: { msg: InterviewMessage }) {
+function MessageBubble({ msg, onAddToTracker, addingPlan, addedPlan }: {
+  msg: InterviewMessage
+  onAddToTracker?: (content: string) => void
+  addingPlan?: boolean
+  addedPlan?: boolean
+}) {
   const isUser = msg.role === 'user'
+  const showAddButton = !isUser && looksLikePlan(msg.content)
+
   return (
     <div className={`flex items-start gap-2.5 ${isUser ? 'flex-row-reverse' : ''}`}>
       <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
@@ -102,12 +123,34 @@ function MessageBubble({ msg }: { msg: InterviewMessage }) {
       }`}>
         {isUser ? <User size={13} className="text-brand-300" /> : <Bot size={13} className="text-slate-300" />}
       </div>
-      <div className={`max-w-[80%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-        isUser
-          ? 'bg-brand-500/20 text-brand-100 rounded-tr-sm'
-          : 'bg-slate-800 text-slate-200 rounded-tl-sm'
-      }`}>
-        {msg.content}
+      <div className="max-w-[80%] flex flex-col gap-1.5">
+        <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+          isUser
+            ? 'bg-brand-500/20 text-brand-100 rounded-tr-sm'
+            : 'bg-slate-800 text-slate-200 rounded-tl-sm'
+        }`}>
+          {msg.content}
+        </div>
+        {showAddButton && (
+          <button
+            type="button"
+            onClick={() => onAddToTracker?.(msg.content)}
+            disabled={addingPlan || addedPlan}
+            className={`self-start flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+              addedPlan
+                ? 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400 cursor-default'
+                : 'bg-brand-500/15 border-brand-500/30 text-brand-400 hover:bg-brand-500/25'
+            }`}
+          >
+            {addingPlan ? (
+              <><Loader2 size={11} className="animate-spin" />Adding…</>
+            ) : addedPlan ? (
+              <><CheckCircle2 size={11} />Added! Opening tracker…</>
+            ) : (
+              <><TrendingUp size={11} />Add to Prep Tracker</>
+            )}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -115,11 +158,14 @@ function MessageBubble({ msg }: { msg: InterviewMessage }) {
 
 export default function InterviewCoachPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [activeId, setActiveId] = useState<number | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [aiError, setAiError] = useState<string | null>(null)
+  const [addingPlan, setAddingPlan] = useState<number | null>(null)
+  const [addedPlan, setAddedPlan] = useState<number | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -171,6 +217,25 @@ export default function InterviewCoachPage() {
     } finally {
       setSending(false)
       inputRef.current?.focus()
+    }
+  }
+
+  async function handleAddToTracker(content: string, msgId: number) {
+    if (addingPlan === msgId) return
+    setAddingPlan(msgId)
+    try {
+      await addPlanFromMessage({
+        content,
+        role: session?.role || '',
+        company: session?.company || '',
+      })
+      qc.invalidateQueries({ queryKey: ['prep-plans'] })
+      setAddedPlan(msgId)
+      setTimeout(() => navigate('/prep-tracker'), 1200)
+    } catch {
+      // silently fail — button just re-enables
+    } finally {
+      setAddingPlan(null)
     }
   }
 
@@ -264,7 +329,17 @@ export default function InterviewCoachPage() {
                 </div>
               )}
               {session?.messages.map(msg => (
-                <MessageBubble key={msg.id} msg={msg} />
+                <MessageBubble
+                  key={msg.id}
+                  msg={msg}
+                  onAddToTracker={
+                    addedPlan === msg.id ? undefined :
+                    addingPlan === msg.id ? undefined :
+                    (content) => handleAddToTracker(content, msg.id)
+                  }
+                  addingPlan={addingPlan === msg.id}
+                  addedPlan={addedPlan === msg.id}
+                />
               ))}
               {sending && (
                 <div className="flex items-start gap-2.5">
