@@ -8,7 +8,7 @@ import {
   listInterviewSessions, createInterviewSession,
   getInterviewSession, sendInterviewMessage, deleteInterviewSession,
 } from '../lib/api'
-import type { InterviewSession, InterviewMessage } from '../lib/api'
+import type { InterviewMessage } from '../lib/api'
 
 const MODE_OPTIONS = [
   { value: 'mock',      label: 'Mock Interview',     desc: 'Full interview simulation with Q&A' },

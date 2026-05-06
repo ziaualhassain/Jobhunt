@@ -10,6 +10,7 @@ const resumeRouter = require('./routes/resume');
 const authRouter = require('./routes/auth');
 const profileRouter = require('./routes/profile');
 const interviewRouter = require('./routes/interview');
+const prepRouter = require('./routes/prep');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +24,7 @@ app.use('/api/jobs', jobsRouter);
 app.use('/api/applications', applicationsRouter);
 app.use('/api/resume', resumeRouter);
 app.use('/api/interview', interviewRouter);
+app.use('/api/prep', prepRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

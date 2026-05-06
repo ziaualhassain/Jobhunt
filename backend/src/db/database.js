@@ -99,6 +99,43 @@ async function initDb() {
       content TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS prep_plans (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      goal TEXT DEFAULT '',
+      company TEXT DEFAULT '',
+      role TEXT DEFAULT '',
+      timeline_weeks INTEGER DEFAULT 8,
+      source TEXT DEFAULT 'ai',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_tasks (
+      id SERIAL PRIMARY KEY,
+      plan_id INTEGER NOT NULL REFERENCES prep_plans(id) ON DELETE CASCADE,
+      category TEXT DEFAULT 'General',
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      estimated_hours INTEGER DEFAULT 1,
+      resources TEXT DEFAULT '',
+      priority TEXT DEFAULT 'medium',
+      completed BOOLEAN DEFAULT FALSE,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_checkins (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_id INTEGER NOT NULL REFERENCES prep_plans(id) ON DELETE CASCADE,
+      checkin_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, plan_id, checkin_date)
+    );
   `);
   // Add preferences column if it doesn't exist yet (idempotent migration)
   await pool.query(`
