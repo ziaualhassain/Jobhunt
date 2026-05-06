@@ -160,25 +160,44 @@ function formatSalary(min, max, currency = 'USD') {
   return '';
 }
 
+// Generic resume/job-description filler words that don't help narrow results
+const STOP_WORDS = new Set([
+  'solutions', 'technologies', 'technology', 'methodologies', 'methodology',
+  'architecture', 'architectures', 'design', 'driven', 'native', 'based',
+  'development', 'engineering', 'management', 'practices', 'principles',
+  'concepts', 'patterns', 'strategy', 'strategies', 'framework', 'frameworks',
+  'and', 'for', 'the', 'with', 'using',
+]);
+
 /**
- * Returns true if the text satisfies at least one keyword.
- * A keyword "blockchain developer" is satisfied when ALL its words
- * appear anywhere in the text (order-independent). Multiple keywords
- * are OR-ed together.
+ * Extracts the meaningful words from a keyword phrase, stripping generic
+ * filler. "java technologies" → ["java"], "cloud native solutions" → ["cloud"].
+ */
+function extractKeyTerms(keyword) {
+  return keyword.toLowerCase()
+    .split(/\s+/)
+    .filter(w => w.length > 1 && !STOP_WORDS.has(w));
+}
+
+/**
+ * Returns true if the text satisfies at least one keyword (OR across keywords).
+ * Within a keyword, all significant words must appear (AND), after stripping
+ * generic filler. "java technologies" → needs "java"; "spring cloud" → needs
+ * both "spring" and "cloud".
  */
 function matchesKeywords(text, keywords) {
   if (keywords.length === 0) return true;
   const lower = text.toLowerCase();
-  return keywords.some(kw =>
-    kw.toLowerCase().split(/\s+/).filter(w => w.length > 1).every(w => lower.includes(w))
-  );
+  return keywords.some(kw => {
+    const terms = extractKeyTerms(kw);
+    if (terms.length === 0) return true;
+    return terms.every(w => lower.includes(w));
+  });
 }
 
-/** Best search terms to send to external APIs (unique, significant words). */
-function apiSearchTerms(keywords, maxWords = 5) {
-  const words = [...new Set(
-    keywords.flatMap(k => k.toLowerCase().split(/\s+/)).filter(w => w.length > 2)
-  )];
+/** Best search terms to send to external APIs (unique significant words). */
+function apiSearchTerms(keywords, maxWords = 8) {
+  const words = [...new Set(keywords.flatMap(k => extractKeyTerms(k)))];
   return words.slice(0, maxWords).join(' ') || 'software developer';
 }
 

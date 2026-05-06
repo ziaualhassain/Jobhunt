@@ -3,6 +3,14 @@ const router = express.Router();
 const { aggregateJobs } = require('../services/jobSources');
 const { pool } = require('../db/database');
 
+const STOP_WORDS = new Set([
+  'solutions', 'technologies', 'technology', 'methodologies', 'methodology',
+  'architecture', 'architectures', 'design', 'driven', 'native', 'based',
+  'development', 'engineering', 'management', 'practices', 'principles',
+  'concepts', 'patterns', 'strategy', 'strategies', 'framework', 'frameworks',
+  'and', 'for', 'the', 'with', 'using',
+]);
+
 // Query TheirStack jobs stored in the DB
 async function getTheirStackJobs(filters) {
   const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '', remote = true } = filters;
@@ -11,17 +19,18 @@ async function getTheirStackJobs(filters) {
   const params = [];
 
   if (keywords.length > 0) {
-    // Each keyword's words must all appear (AND), keywords are OR-ed
-    const kwConditions = keywords.map(kw => {
-      const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+    // Each keyword's significant words must all appear (AND), keywords are OR-ed
+    const kwConditions = keywords.flatMap(kw => {
+      const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+      if (words.length === 0) return []; // skip all-stop-word keywords
       const wordClauses = words.map(w => {
         params.push(`%${w}%`);
         const i = params.length;
         return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
       });
-      return `(${wordClauses.join(' AND ')})`;
+      return [`(${wordClauses.join(' AND ')})`];
     });
-    conditions.push(`(${kwConditions.join(' OR ')})`);
+    if (kwConditions.length > 0) conditions.push(`(${kwConditions.join(' OR ')})`);
   }
 
   if (tags.length > 0) {
