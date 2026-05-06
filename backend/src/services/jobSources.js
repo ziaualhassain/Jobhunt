@@ -197,12 +197,13 @@ function matchesKeywords(text, keywords) {
   });
 }
 
-/** Best search terms to send to external APIs — one representative term per keyword. */
+/** Best search terms to send to external APIs. */
 function apiSearchTerms(keywords) {
-  // Take the first significant word from each keyword to avoid over-constraining API results.
-  // Local matchesKeywords does the precise OR filtering after fetch.
+  // External APIs (Himalayas, ArbeitNow) AND-interpret space-separated terms,
+  // so sending many terms returns 0 results. Send at most 2 significant terms;
+  // local matchesKeywords handles the full OR across all keywords after fetch.
   const terms = [...new Set(keywords.map(k => extractKeyTerms(k)[0]).filter(Boolean))];
-  return terms.slice(0, 6).join(' ') || 'software developer';
+  return terms.slice(0, 2).join(' ') || 'software developer';
 }
 
 // ─── Aggregator ─────────────────────────────────────────────────────────────

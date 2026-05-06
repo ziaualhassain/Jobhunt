@@ -29,7 +29,7 @@ Analyze the resume text and return ONLY a JSON object with these exact fields:
   "experienceLevel": "one of: Junior | Mid-level | Senior | Lead | Staff | Principal",
   "yearsOfExperience": <number>,
   "jobTitles": ["4-6 specific job titles this person is best suited for"],
-  "searchKeywords": ["8-12 lowercase keywords optimised for job searching"],
+  "searchKeywords": ["6-10 individual TECHNOLOGY or SKILL keywords only — use specific tech names like 'python', 'react', 'aws', 'blockchain', 'solidity', 'java', 'mysql', 'kubernetes'. Exclude all job titles, role names (developer, engineer, creator, researcher), soft skills, office tools, operating systems, and design tools. These keywords are sent directly to job board search APIs."],
   "cloudPlatforms": ["cloud platforms or infrastructure tools mentioned, empty array if none"],
   "summary": "one sentence summary of this person's profile for job matching"
 }

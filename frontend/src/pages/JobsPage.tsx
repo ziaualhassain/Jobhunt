@@ -87,7 +87,7 @@ export default function JobsPage() {
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
     const f: Partial<SearchFilters> = {
       keywords: analysis.searchKeywords,
-      tags: analysis.skills.slice(0, 6),
+      tags: [],  // don't auto-apply tags — skills like "C", "Figma" make the tag filter too restrictive
       experienceLevel: analysis.experienceLevel,
       remote: true,
     }
