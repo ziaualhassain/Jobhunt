@@ -4,10 +4,9 @@ import {
   AlertTriangle, ChevronDown, ChevronUp, Target, Sparkles, Wand2,
   ArrowRight, ArrowLeft, Copy, Check, Mail, Phone, MapPin,
   Linkedin, Github, Globe, ExternalLink, BookOpen, Award, Download,
+  FileCode,
 } from 'lucide-react'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
-import { enhanceResume, rewriteResume } from '../lib/api'
+import { enhanceResume, rewriteResume, downloadResumePdf, downloadResumeLatex } from '../lib/api'
 import type { ResumeEnhancement, GeneratedResume } from '../lib/api'
 
 // ─── score helpers ────────────────────────────────────────────────────────────
@@ -296,10 +295,21 @@ function toPlainText(r: GeneratedResume): string {
   return lines.join('\n')
 }
 
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 function ResumePreview({ resume }: { resume: GeneratedResume }) {
   const [copied, setCopied] = useState(false)
-  const [downloading, setDownloading] = useState(false)
-  const cardRef = useRef<HTMLDivElement>(null)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [downloadingTex, setDownloadingTex] = useState(false)
 
   function handleCopy() {
     navigator.clipboard.writeText(toPlainText(resume))
@@ -308,32 +318,28 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
   }
 
   async function handleDownloadPdf() {
-    if (!cardRef.current) return
-    setDownloading(true)
+    setDownloadingPdf(true)
     try {
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 2,
-        useCORS: true,
-        backgroundColor: '#0f172a',
-      })
-      const imgData = canvas.toDataURL('image/png')
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-      const pageW = pdf.internal.pageSize.getWidth()
-      const pageH = pdf.internal.pageSize.getHeight()
-      const imgW = pageW
-      const imgH = (canvas.height * pageW) / canvas.width
-
-      let y = 0
-      while (y < imgH) {
-        if (y > 0) pdf.addPage()
-        pdf.addImage(imgData, 'PNG', 0, -y, imgW, imgH)
-        y += pageH
-      }
-
+      const blob = await downloadResumePdf(resume)
       const name = resume.name?.replace(/\s+/g, '_') || 'resume'
-      pdf.save(`${name}_resume.pdf`)
+      triggerBlobDownload(blob, `${name}_resume.pdf`)
+    } catch {
+      alert('PDF generation failed. Please try again.')
     } finally {
-      setDownloading(false)
+      setDownloadingPdf(false)
+    }
+  }
+
+  async function handleDownloadLatex() {
+    setDownloadingTex(true)
+    try {
+      const blob = await downloadResumeLatex(resume)
+      const name = resume.name?.replace(/\s+/g, '_') || 'resume'
+      triggerBlobDownload(blob, `${name}_resume.tex`)
+    } catch {
+      alert('LaTeX export failed. Please try again.')
+    } finally {
+      setDownloadingTex(false)
     }
   }
 
@@ -356,11 +362,23 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
             {copied ? <><Check size={12} className="text-emerald-400" />Copied!</> : <><Copy size={12} />Copy text</>}
           </button>
           <button
+            onClick={handleDownloadLatex}
+            disabled={downloadingTex}
+            title="Download LaTeX source — compile on Overleaf or with pdflatex"
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50"
+          >
+            {downloadingTex
+              ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
+              : <><FileCode size={12} />Download .tex</>
+            }
+          </button>
+          <button
             onClick={handleDownloadPdf}
-            disabled={downloading}
+            disabled={downloadingPdf}
+            title="ATS-friendly text-based PDF (fully parseable by applicant tracking systems)"
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-brand-500/40 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-50"
           >
-            {downloading
+            {downloadingPdf
               ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
               : <><Download size={12} />Download PDF</>
             }
@@ -368,8 +386,16 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
         </div>
       </div>
 
+      {/* ATS note */}
+      <p className="text-[11px] text-slate-500 flex items-center gap-1.5">
+        <CheckCircle2 size={11} className="text-emerald-500 shrink-0" />
+        PDF is text-based (not an image) — fully readable by ATS scanners. The .tex file can be compiled on{' '}
+        <a href="https://overleaf.com" target="_blank" rel="noopener noreferrer" className="text-brand-400 hover:underline">Overleaf</a>
+        {' '}for a typeset version.
+      </p>
+
       {/* Resume card */}
-      <div ref={cardRef} className="card overflow-hidden">
+      <div className="card overflow-hidden">
         {/* Name + contact header */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-b border-slate-700/60 px-7 py-6">
           <h1 className="text-2xl font-bold text-slate-100 tracking-wide">{resume.name || 'Your Name'}</h1>

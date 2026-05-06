@@ -216,6 +216,18 @@ export async function rewriteResume(
   return res.data
 }
 
+// Downloads a text-based ATS-friendly PDF generated server-side via pdfkit
+export async function downloadResumePdf(resume: GeneratedResume): Promise<Blob> {
+  const res = await api.post('/resume/pdf', resume, { responseType: 'blob' })
+  return res.data
+}
+
+// Downloads Jake's Resume LaTeX source (.tex) — compile on Overleaf or with pdflatex
+export async function downloadResumeLatex(resume: GeneratedResume): Promise<Blob> {
+  const res = await api.post('/resume/latex', resume, { responseType: 'blob' })
+  return res.data
+}
+
 // ── Interview Coach ───────────────────────────────────────────────────────────
 
 export interface InterviewSession {

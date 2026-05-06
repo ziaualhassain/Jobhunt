@@ -1,6 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const { extractText, analyzeResume, enhanceResume, rewriteResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
+const { generateResumePdf } = require('../services/resumePdf');
+const { generateResumeLatex } = require('../services/resumeLatex');
 
 const router = express.Router();
 
@@ -114,6 +116,38 @@ router.post('/rewrite', upload.single('resume'), async (req, res) => {
       return res.status(503).json({ error: 'No AI backend configured. Install Ollama or set ANTHROPIC_API_KEY.' });
     if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
     res.status(500).json({ error: err.message || 'Resume rewrite failed' });
+  }
+});
+
+// POST /api/resume/pdf — generates an ATS-friendly text-based PDF from JSON resume data
+router.post('/pdf', async (req, res) => {
+  try {
+    const resume = req.body;
+    if (!resume || !resume.name) return res.status(400).json({ error: 'Invalid resume data' });
+    const buffer = await generateResumePdf(resume);
+    const filename = `${(resume.name || 'resume').replace(/\s+/g, '_')}_resume.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    console.error('[Resume PDF]', err.message);
+    res.status(500).json({ error: err.message || 'PDF generation failed' });
+  }
+});
+
+// POST /api/resume/latex — generates Jake's Resume LaTeX source (.tex) from JSON resume data
+router.post('/latex', async (req, res) => {
+  try {
+    const resume = req.body;
+    if (!resume || !resume.name) return res.status(400).json({ error: 'Invalid resume data' });
+    const latex = generateResumeLatex(resume);
+    const filename = `${(resume.name || 'resume').replace(/\s+/g, '_')}_resume.tex`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(latex);
+  } catch (err) {
+    console.error('[Resume LaTeX]', err.message);
+    res.status(500).json({ error: err.message || 'LaTeX generation failed' });
   }
 });
 
