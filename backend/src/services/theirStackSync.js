@@ -67,6 +67,10 @@ async function syncTheirStackJobs() {
     console.log('[TheirStack] Skipping sync — THEIRSTACK_API_KEY not set');
     return;
   }
+  if (process.env.REFRESH_THEIRSTACK !== 'true') {
+    console.log('[TheirStack] Skipping sync — REFRESH_THEIRSTACK is not true (existing DB rows will still be served)');
+    return;
+  }
 
   console.log('[TheirStack] Starting India job sync…');
   let synced = 0;
