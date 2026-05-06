@@ -183,7 +183,8 @@ function extractKeyTerms(keyword) {
  * Returns true if the text satisfies at least one keyword (OR across keywords).
  * Within a keyword, all significant words must appear (AND), after stripping
  * generic filler. "java technologies" → needs "java"; "spring cloud" → needs
- * both "spring" and "cloud".
+ * any significant word from it appears (OR within keyword, OR across keywords).
+ * "spring cloud" matches if "spring" OR "cloud" appears anywhere in text.
  */
 function matchesKeywords(text, keywords) {
   if (keywords.length === 0) return true;
@@ -191,14 +192,16 @@ function matchesKeywords(text, keywords) {
   return keywords.some(kw => {
     const terms = extractKeyTerms(kw);
     if (terms.length === 0) return true;
-    return terms.every(w => lower.includes(w));
+    return terms.some(w => lower.includes(w)); // OR within keyword
   });
 }
 
-/** Best search terms to send to external APIs (unique significant words). */
-function apiSearchTerms(keywords, maxWords = 8) {
-  const words = [...new Set(keywords.flatMap(k => extractKeyTerms(k)))];
-  return words.slice(0, maxWords).join(' ') || 'software developer';
+/** Best search terms to send to external APIs — one representative term per keyword. */
+function apiSearchTerms(keywords) {
+  // Take the first significant word from each keyword to avoid over-constraining API results.
+  // Local matchesKeywords does the precise OR filtering after fetch.
+  const terms = [...new Set(keywords.map(k => extractKeyTerms(k)[0]).filter(Boolean))];
+  return terms.slice(0, 6).join(' ') || 'software developer';
 }
 
 // ─── Aggregator ─────────────────────────────────────────────────────────────
@@ -245,21 +248,19 @@ async function aggregateJobs(filters = {}) {
     });
   }
 
-  // Location + remote filter — four combinations
-  if (location || remote) {
-    const loc = location.toLowerCase();
-    allJobs = allJobs.filter(job => {
-      const jobLoc = (job.location || '').toLowerCase();
-      const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere') ||
-        jobLoc.includes('worldwide') || jobLoc.includes('global') || jobLoc.includes('international');
-      const matchesLoc = loc ? jobLoc.includes(loc) : false;
+  // Location + remote filter — all four combinations always applied
+  const loc = location.toLowerCase();
+  allJobs = allJobs.filter(job => {
+    const jobLoc = (job.location || '').toLowerCase();
+    const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere') ||
+      jobLoc.includes('worldwide') || jobLoc.includes('global') || jobLoc.includes('international');
+    const matchesLoc = loc ? jobLoc.includes(loc) : false;
 
-      if (loc && remote)  return matchesLoc || isRemote;  // Hyderabad + remote
-      if (loc && !remote) return matchesLoc;               // Hyderabad only, no remote
-      /* !loc && remote */ return isRemote;                // Remote only
-    });
-  }
-  // !loc && !remote → no location filter applied
+    if (loc && remote)   return matchesLoc || isRemote; // city + remote ON: either
+    if (loc && !remote)  return matchesLoc;              // city + remote OFF: city only
+    if (!loc && remote)  return isRemote;                // no city + remote ON: remote only
+    /* !loc && !remote */return !isRemote;               // no city + remote OFF: non-remote only
+  });
 
   // Experience level filter — match against title and description
   if (experienceLevel) {
