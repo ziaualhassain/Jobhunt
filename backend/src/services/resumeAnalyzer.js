@@ -125,14 +125,30 @@ async function analyzeResume(resumeText) {
   throw new Error('NO_BACKEND');
 }
 
-// ─── Resume Enhancer (Claude only) ─────────────────────────────────────────
+// ─── Resume Enhancer ────────────────────────────────────────────────────────
 
 const ENHANCE_SYSTEM_PROMPT = `You are an expert ATS (Applicant Tracking System) analyst and resume coach.
 Analyze the provided resume against the candidate's target role and required skills.
 Score sections fairly (0-100). Be honest — only give high scores for genuinely strong sections.
 Provide specific, actionable feedback. Identify real issues and concrete improvements.`;
 
-async function enhanceResume(resumeText, targetRole, targetSkills) {
+const ENHANCE_JSON_TEMPLATE = `Return ONLY a JSON object with this exact structure:
+{
+  "overall_score": <number 0-100>,
+  "grade": <"A"|"B"|"C"|"D"|"F">,
+  "sections": {
+    "ats_compatibility":       { "score": <number>, "feedback": "<string>" },
+    "keyword_match":           { "score": <number>, "matched": ["<skill>"], "missing": ["<skill>"], "feedback": "<string>" },
+    "experience_presentation": { "score": <number>, "feedback": "<string>" },
+    "skills_section":          { "score": <number>, "feedback": "<string>" },
+    "quantification":          { "score": <number>, "feedback": "<string>" }
+  },
+  "issues": [{ "severity": <"high"|"medium"|"low">, "title": "<string>", "detail": "<string>" }],
+  "improvements": [{ "priority": <number>, "action": "<string>", "impact": "<string>" }],
+  "summary": "<one sentence>"
+}`;
+
+async function enhanceWithClaude(resumeText, targetRole, targetSkills) {
   const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const schema = {
@@ -203,6 +219,46 @@ ${resumeText.slice(0, 12000)}`;
 
   const textBlock = response.content.find(b => b.type === 'text');
   return JSON.parse(textBlock.text);
+}
+
+async function enhanceWithOllama(resumeText, targetRole, targetSkills) {
+  const model = process.env.OLLAMA_MODEL || 'llama3.2';
+  const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+  const response = await axios.post(
+    `${baseUrl}/api/chat`,
+    {
+      model,
+      format: 'json',
+      stream: false,
+      messages: [
+        { role: 'system', content: `${ENHANCE_SYSTEM_PROMPT}\n\n${ENHANCE_JSON_TEMPLATE}` },
+        {
+          role: 'user',
+          content: `Target Role: ${targetRole}\nRequired Skills / Keywords: ${targetSkills}\n\nResume:\n${resumeText.slice(0, 8000)}`,
+        },
+      ],
+      options: { temperature: 0.1 },
+    },
+    { timeout: 180_000 },
+  );
+
+  const content = response.data?.message?.content;
+  if (!content) throw new Error('Empty response from Ollama');
+  return JSON.parse(content);
+}
+
+async function enhanceResume(resumeText, targetRole, targetSkills) {
+  if (process.env.ANTHROPIC_API_KEY) {
+    console.log('[Resume Enhance] Using Claude API');
+    return enhanceWithClaude(resumeText, targetRole, targetSkills);
+  }
+  if (await isOllamaAvailable()) {
+    const model = process.env.OLLAMA_MODEL || 'llama3.2';
+    console.log(`[Resume Enhance] Using Ollama (${model})`);
+    return enhanceWithOllama(resumeText, targetRole, targetSkills);
+  }
+  throw new Error('NO_BACKEND');
 }
 
 module.exports = { extractText, analyzeResume, enhanceResume, isOllamaAvailable };

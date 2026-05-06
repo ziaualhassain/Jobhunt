@@ -66,8 +66,8 @@ router.post('/', async (req, res) => {
     salary, job_type, source, tags, status = 'saved', notes = '',
   } = req.body;
 
-  const resolvedTitle = (title || '').trim() || 'Untitled Position';
   const resolvedCompany = (company || '').trim() || 'Unknown Company';
+  const resolvedTitle = (title || '').trim() || resolvedCompany;
 
   try {
     const applied_date = status === 'applied' ? new Date().toISOString() : null;

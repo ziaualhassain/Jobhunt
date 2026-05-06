@@ -69,10 +69,6 @@ router.post('/enhance', upload.single('resume'), async (req, res) => {
   const targetSkills = (req.body.targetSkills || '').trim();
   if (!targetRole) return res.status(400).json({ error: 'targetRole is required' });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return res.status(503).json({ error: 'Resume enhancement requires an Anthropic API key. Set ANTHROPIC_API_KEY in backend/.env' });
-  }
-
   try {
     const text = await extractText(req.file.buffer, req.file.mimetype);
     if (!text || text.trim().length < 50) {
@@ -82,6 +78,11 @@ router.post('/enhance', upload.single('resume'), async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[Resume Enhance] failed:', err.message);
+    if (err.message === 'NO_BACKEND') {
+      return res.status(503).json({
+        error: 'No AI backend configured. Set ANTHROPIC_API_KEY in backend/.env, or install Ollama (ollama.com) and run: ollama pull llama3.2',
+      });
+    }
     if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
     res.status(500).json({ error: err.message || 'Resume enhancement failed' });
   }
