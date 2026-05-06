@@ -144,3 +144,247 @@ export async function analyzeResume(file: File): Promise<{ analysis: ResumeAnaly
   });
   return res.data;
 }
+
+// ── Resume Enhancer ───────────────────────────────────────────────────────────
+
+export interface SectionScore {
+  score: number
+  feedback: string
+}
+
+export interface ResumeEnhancement {
+  overall_score: number
+  grade: string
+  sections: {
+    ats_compatibility: SectionScore
+    keyword_match: SectionScore & { matched: string[]; missing: string[] }
+    experience_presentation: SectionScore
+    skills_section: SectionScore
+    quantification: SectionScore
+  }
+  issues: { severity: 'high' | 'medium' | 'low'; title: string; detail: string }[]
+  improvements: { priority: number; action: string; impact: string }[]
+  summary: string
+}
+
+export async function enhanceResume(
+  file: File,
+  targetRole: string,
+  targetSkills: string,
+): Promise<ResumeEnhancement> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('targetRole', targetRole)
+  form.append('targetSkills', targetSkills)
+  const res = await api.post('/resume/enhance', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export interface GeneratedResume {
+  name: string
+  contact: { email: string; phone: string; location: string; linkedin: string; github: string; website: string }
+  summary: string
+  experience: { title: string; company: string; location: string; period: string; bullets: string[] }[]
+  skills: string[]
+  education: { degree: string; institution: string; year: string }[]
+  projects: { name: string; description: string; tech: string }[]
+  certifications: string[]
+}
+
+export async function rewriteResume(
+  file: File,
+  targetRole: string,
+  targetSkills: string,
+  achievements: string,
+  projects: string,
+  extraSkills: string,
+  missingKeywords: string[],
+): Promise<GeneratedResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('targetRole', targetRole)
+  form.append('targetSkills', targetSkills)
+  form.append('achievements', achievements)
+  form.append('projects', projects)
+  form.append('extraSkills', extraSkills)
+  form.append('missingKeywords', JSON.stringify(missingKeywords))
+  const res = await api.post('/resume/rewrite', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+// Downloads a text-based ATS-friendly PDF generated server-side via pdfkit
+export async function downloadResumePdf(resume: GeneratedResume, template = 'jake'): Promise<Blob> {
+  const res = await api.post(`/resume/pdf?template=${template}`, resume, { responseType: 'blob' })
+  return res.data
+}
+
+// Downloads LaTeX source (.tex) — compile on Overleaf or with pdflatex
+export async function downloadResumeLatex(resume: GeneratedResume, template = 'jake'): Promise<Blob> {
+  const res = await api.post(`/resume/latex?template=${template}`, resume, { responseType: 'blob' })
+  return res.data
+}
+
+// ── Interview Coach ───────────────────────────────────────────────────────────
+
+export interface InterviewSession {
+  id: number
+  title: string
+  company: string
+  role: string
+  mode: string
+  message_count?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface InterviewMessage {
+  id: number
+  session_id: number
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface InterviewSessionDetail extends InterviewSession {
+  messages: InterviewMessage[]
+}
+
+export async function listInterviewSessions(): Promise<InterviewSession[]> {
+  const res = await api.get('/interview/sessions')
+  return res.data
+}
+
+export async function createInterviewSession(data: {
+  title: string
+  company?: string
+  role?: string
+  mode?: string
+}): Promise<InterviewSession> {
+  const res = await api.post('/interview/sessions', data)
+  return res.data
+}
+
+export async function getInterviewSession(id: number): Promise<InterviewSessionDetail> {
+  const res = await api.get(`/interview/sessions/${id}`)
+  return res.data
+}
+
+export async function sendInterviewMessage(sessionId: number, message: string): Promise<InterviewMessage> {
+  const res = await api.post(`/interview/sessions/${sessionId}/chat`, { message })
+  return res.data
+}
+
+export async function deleteInterviewSession(id: number): Promise<void> {
+  await api.delete(`/interview/sessions/${id}`)
+}
+
+// ── Preparation Tracker ───────────────────────────────────────────────────────
+
+export interface PrepPlan {
+  id: number
+  title: string
+  goal: string
+  company: string
+  role: string
+  timeline_weeks: number
+  source: string
+  total_tasks?: number
+  completed_tasks?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface PrepTask {
+  id: number
+  plan_id: number
+  category: string
+  title: string
+  description: string
+  estimated_hours: number
+  resources: string
+  priority: 'high' | 'medium' | 'low'
+  completed: boolean
+  completed_at: string | null
+  created_at: string
+}
+
+export interface PrepStreak {
+  current: number
+  longest: number
+}
+
+export interface PrepPlanDetail extends PrepPlan {
+  tasks: PrepTask[]
+  checkins: string[]
+  streak: PrepStreak
+  todayCheckin: boolean
+}
+
+export async function listPrepPlans(): Promise<PrepPlan[]> {
+  const res = await api.get('/prep/plans')
+  return res.data
+}
+
+export async function getPrepPlan(id: number): Promise<PrepPlanDetail> {
+  const res = await api.get(`/prep/plans/${id}`)
+  return res.data
+}
+
+export async function generatePrepPlan(data: {
+  role: string; company?: string; timelineWeeks?: number; focusAreas?: string
+}): Promise<{ id: number; title: string }> {
+  const res = await api.post('/prep/plans/generate', data)
+  return res.data
+}
+
+export async function uploadPrepPlan(file: File, planTitle?: string): Promise<{ id: number; title: string; taskCount: number }> {
+  const form = new FormData()
+  form.append('file', file)
+  if (planTitle) form.append('planTitle', planTitle)
+  const res = await api.post('/prep/plans/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return res.data
+}
+
+export async function deletePrepPlan(id: number): Promise<void> {
+  await api.delete(`/prep/plans/${id}`)
+}
+
+export async function togglePrepTask(taskId: number, completed: boolean): Promise<PrepTask> {
+  const res = await api.patch(`/prep/tasks/${taskId}`, { completed })
+  return res.data
+}
+
+export interface PrepTaskMessage {
+  id: number
+  task_id: number
+  user_id: number
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export async function getTaskMessages(taskId: number): Promise<PrepTaskMessage[]> {
+  const res = await api.get(`/prep/tasks/${taskId}/messages`)
+  return res.data
+}
+
+export async function sendTaskMessage(taskId: number, message: string): Promise<{ reply: string }> {
+  const res = await api.post(`/prep/tasks/${taskId}/chat`, { message })
+  return res.data
+}
+
+export async function checkInToday(planId: number): Promise<{ streak: PrepStreak; todayCheckin: boolean }> {
+  const res = await api.post(`/prep/plans/${planId}/checkin`, {})
+  return res.data
+}
+
+export async function addPlanFromMessage(data: {
+  content: string; role?: string; company?: string; title?: string
+}): Promise<{ id: number; title: string }> {
+  const res = await api.post('/prep/plans/from-message', data)
+  return res.data
+}

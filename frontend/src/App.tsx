@@ -1,11 +1,14 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { Search, Kanban, Cloud, LogOut } from 'lucide-react'
+import { Search, Kanban, Cloud, LogOut, FileSearch2, MessageSquare, TrendingUp } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ProfilePage from './pages/ProfilePage'
+import ResumeEnhancerPage from './pages/ResumeEnhancerPage'
+import InterviewCoachPage from './pages/InterviewCoachPage'
+import PrepTrackerPage from './pages/PrepTrackerPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -50,6 +53,39 @@ export default function App() {
                 <Kanban size={15} />
                 Tracker
               </NavLink>
+              <NavLink
+                to="/resume-enhancer"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  }`
+                }
+              >
+                <FileSearch2 size={15} />
+                Resume Enhancer
+              </NavLink>
+              <NavLink
+                to="/interview-coach"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  }`
+                }
+              >
+                <MessageSquare size={15} />
+                Interview Coach
+              </NavLink>
+              <NavLink
+                to="/prep-tracker"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  }`
+                }
+              >
+                <TrendingUp size={15} />
+                Prep Tracker
+              </NavLink>
             </nav>
             <div className="ml-auto flex items-center gap-2">
               <NavLink
@@ -84,6 +120,9 @@ export default function App() {
           <Route path="/" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
           <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/resume-enhancer" element={<ProtectedRoute><ResumeEnhancerPage /></ProtectedRoute>} />
+          <Route path="/interview-coach" element={<ProtectedRoute><InterviewCoachPage /></ProtectedRoute>} />
+          <Route path="/prep-tracker" element={<ProtectedRoute><PrepTrackerPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

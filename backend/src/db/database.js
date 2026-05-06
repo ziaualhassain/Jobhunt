@@ -80,6 +80,71 @@ async function initDb() {
       date_posted DATE,
       fetched_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS interview_sessions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      company TEXT DEFAULT '',
+      role TEXT DEFAULT '',
+      mode TEXT DEFAULT 'practice',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS interview_messages (
+      id SERIAL PRIMARY KEY,
+      session_id INTEGER NOT NULL REFERENCES interview_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_plans (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      goal TEXT DEFAULT '',
+      company TEXT DEFAULT '',
+      role TEXT DEFAULT '',
+      timeline_weeks INTEGER DEFAULT 8,
+      source TEXT DEFAULT 'ai',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_tasks (
+      id SERIAL PRIMARY KEY,
+      plan_id INTEGER NOT NULL REFERENCES prep_plans(id) ON DELETE CASCADE,
+      category TEXT DEFAULT 'General',
+      title TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      estimated_hours INTEGER DEFAULT 1,
+      resources TEXT DEFAULT '',
+      priority TEXT DEFAULT 'medium',
+      completed BOOLEAN DEFAULT FALSE,
+      completed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_checkins (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_id INTEGER NOT NULL REFERENCES prep_plans(id) ON DELETE CASCADE,
+      checkin_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      notes TEXT DEFAULT '',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, plan_id, checkin_date)
+    );
+
+    CREATE TABLE IF NOT EXISTS prep_task_messages (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES prep_tasks(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   // Add preferences column if it doesn't exist yet (idempotent migration)
   await pool.query(`
