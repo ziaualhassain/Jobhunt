@@ -284,4 +284,45 @@ async function structureFromMessage(content, role, company) {
   throw new Error('NO_BACKEND');
 }
 
-module.exports = { generatePlan, parseUpload, structureFromMessage };
+// ─── Task topic chat ──────────────────────────────────────────────────────────
+
+async function chatAboutTask(messages, task) {
+  const systemPrompt = [
+    `You are an expert technical tutor helping someone prepare for a tech interview.`,
+    `Topic: ${task.title}`,
+    task.description ? `Context: ${task.description}` : '',
+    task.resources  ? `Resources for this topic: ${task.resources}` : '',
+    ``,
+    `Guidelines:`,
+    `- Explain concepts clearly with concise examples or pseudocode`,
+    `- Ask a follow-up question after each answer to deepen understanding`,
+    `- Suggest practice exercises or LeetCode-style problems when relevant`,
+    `- Keep each response focused — 3–5 sentences max unless a code example is needed`,
+    `- If the user seems stuck, break the concept into smaller steps`,
+  ].filter(Boolean).join('\n');
+
+  if (await isOllamaAvailable()) {
+    const model = process.env.OLLAMA_MODEL || 'llama3.2';
+    const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+    const res = await axios.post(`${baseUrl}/api/chat`, {
+      model, stream: false,
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      options: { temperature: 0.7 },
+    }, { timeout: 120_000 });
+    const reply = res.data?.message?.content;
+    if (!reply) throw new Error('Empty response from Ollama');
+    return reply;
+  }
+  if (process.env.ANTHROPIC_API_KEY) {
+    const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await client.messages.create({
+      model: 'claude-opus-4-7', max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    });
+    return res.content.find(b => b.type === 'text')?.text || '';
+  }
+  throw new Error('NO_BACKEND');
+}
+
+module.exports = { generatePlan, parseUpload, structureFromMessage, chatAboutTask };

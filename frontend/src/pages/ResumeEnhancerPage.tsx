@@ -3,8 +3,10 @@ import {
   Upload, FileText, Loader2, AlertCircle, CheckCircle2, XCircle,
   AlertTriangle, ChevronDown, ChevronUp, Target, Sparkles, Wand2,
   ArrowRight, ArrowLeft, Copy, Check, Mail, Phone, MapPin,
-  Linkedin, Github, Globe, ExternalLink, BookOpen, Award,
+  Linkedin, Github, Globe, ExternalLink, BookOpen, Award, Download,
 } from 'lucide-react'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 import { enhanceResume, rewriteResume } from '../lib/api'
 import type { ResumeEnhancement, GeneratedResume } from '../lib/api'
 
@@ -296,6 +298,8 @@ function toPlainText(r: GeneratedResume): string {
 
 function ResumePreview({ resume }: { resume: GeneratedResume }) {
   const [copied, setCopied] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
 
   function handleCopy() {
     navigator.clipboard.writeText(toPlainText(resume))
@@ -303,27 +307,69 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  async function handleDownloadPdf() {
+    if (!cardRef.current) return
+    setDownloading(true)
+    try {
+      const canvas = await html2canvas(cardRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#0f172a',
+      })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const pageH = pdf.internal.pageSize.getHeight()
+      const imgW = pageW
+      const imgH = (canvas.height * pageW) / canvas.width
+
+      let y = 0
+      while (y < imgH) {
+        if (y > 0) pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, -y, imgW, imgH)
+        y += pageH
+      }
+
+      const name = resume.name?.replace(/\s+/g, '_') || 'resume'
+      pdf.save(`${name}_resume.pdf`)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   const { contact } = resume
 
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500" />
           <span className="text-sm font-semibold text-slate-200">Rewritten Resume</span>
           <span className="text-xs text-slate-500 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">AI Generated</span>
         </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
-        >
-          {copied ? <><Check size={12} className="text-emerald-400" />Copied!</> : <><Copy size={12} />Copy as text</>}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleCopy}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
+          >
+            {copied ? <><Check size={12} className="text-emerald-400" />Copied!</> : <><Copy size={12} />Copy text</>}
+          </button>
+          <button
+            onClick={handleDownloadPdf}
+            disabled={downloading}
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-brand-500/40 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-50"
+          >
+            {downloading
+              ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
+              : <><Download size={12} />Download PDF</>
+            }
+          </button>
+        </div>
       </div>
 
       {/* Resume card */}
-      <div className="card overflow-hidden">
+      <div ref={cardRef} className="card overflow-hidden">
         {/* Name + contact header */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-b border-slate-700/60 px-7 py-6">
           <h1 className="text-2xl font-bold text-slate-100 tracking-wide">{resume.name || 'Your Name'}</h1>

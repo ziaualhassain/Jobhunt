@@ -1,14 +1,14 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Target, Trash2, CheckCircle2, Circle, ChevronDown, ChevronUp,
   Loader2, Upload, Flame, Clock, Sparkles, X,
   TrendingUp, AlertCircle, ExternalLink, BookOpen, ChevronLeft, ChevronRight,
-  Link2,
+  Link2, MessageCircle, Send, Bot, User,
 } from 'lucide-react'
 import {
   listPrepPlans, getPrepPlan, generatePrepPlan, uploadPrepPlan,
-  deletePrepPlan, togglePrepTask, checkInToday,
+  deletePrepPlan, togglePrepTask, checkInToday, chatAboutTask,
 } from '../lib/api'
 import type { PrepPlan, PrepTask } from '../lib/api'
 
@@ -41,12 +41,6 @@ function isUrl(s: string) {
   try { new URL(s); return s.startsWith('http'); } catch { return false }
 }
 
-// Split a resource string into text / URL segments
-function parseResources(text: string): { type: 'text' | 'url'; value: string }[] {
-  const parts = text.split(/(https?:\/\/[^\s,;]+)/g)
-  return parts.filter(Boolean).map(p => ({ type: isUrl(p) ? 'url' : 'text', value: p }))
-}
-
 function hostname(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
@@ -67,39 +61,199 @@ function ProgressBar({ value, color = 'bg-brand-500', height = 'h-1.5' }: {
 }
 
 // ─── ResourceLinks ────────────────────────────────────────────────────────────
+// Split by comma/semicolon/newline to get individual resource items.
+// Each item: if it's a URL → direct link; otherwise → Google search link.
+
+function splitResourceItems(text: string): string[] {
+  return text.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean)
+}
 
 function ResourceLinks({ text }: { text: string }) {
   if (!text) return null
-  const segments = parseResources(text)
-  const hasUrls = segments.some(s => s.type === 'url')
+  const items = splitResourceItems(text)
 
-  if (hasUrls) {
-    return (
-      <div className="flex flex-wrap gap-1.5 mt-2">
-        {segments.map((seg, i) =>
-          seg.type === 'url' ? (
-            <a
-              key={i}
-              href={seg.value}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-brand-500/10 border border-brand-500/30 text-brand-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors"
-            >
-              <ExternalLink size={10} />
-              {hostname(seg.value)}
-            </a>
-          ) : seg.value.trim() ? (
-            <span key={i} className="text-[11px] text-slate-500">{seg.value.trim()}</span>
-          ) : null
-        )}
-      </div>
-    )
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {items.map((item, i) => {
+        const url = isUrl(item)
+          ? item
+          : `https://www.google.com/search?q=${encodeURIComponent(item)}`
+        const label = isUrl(item) ? hostname(item) : item
+        const icon = isUrl(item) ? ExternalLink : Link2
+        const Icon = icon
+        return (
+          <a
+            key={i}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-md bg-brand-500/10 border border-brand-500/30 text-brand-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors"
+          >
+            <Icon size={10} />
+            {label}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── TaskChatModal ────────────────────────────────────────────────────────────
+
+interface ChatMessage { role: 'user' | 'assistant'; content: string }
+
+function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Seed opening message from the AI
+  useEffect(() => {
+    async function seed() {
+      setSending(true)
+      try {
+        const seedMsg: ChatMessage = {
+          role: 'user',
+          content: `I want to learn about: ${task.title}. Can you give me a quick overview and tell me what I should focus on?`,
+        }
+        setMessages([seedMsg])
+        const reply = await chatAboutTask([seedMsg], {
+          title: task.title,
+          description: task.description,
+          resources: task.resources,
+        })
+        setMessages([seedMsg, { role: 'assistant', content: reply }])
+      } catch {
+        setError('Could not start chat. Is Ollama running?')
+      } finally { setSending(false) }
+    }
+    seed()
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, sending])
+
+  async function handleSend() {
+    const text = input.trim()
+    if (!text || sending) return
+    setInput('')
+    setError('')
+    const userMsg: ChatMessage = { role: 'user', content: text }
+    const next = [...messages, userMsg]
+    setMessages(next)
+    setSending(true)
+    try {
+      const reply = await chatAboutTask(next, {
+        title: task.title,
+        description: task.description,
+        resources: task.resources,
+      })
+      setMessages(m => [...m, { role: 'assistant', content: reply }])
+    } catch {
+      setError('Reply failed. Is Ollama running?')
+    } finally {
+      setSending(false)
+      inputRef.current?.focus()
+    }
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
   return (
-    <div className="flex items-start gap-1.5 mt-2">
-      <Link2 size={11} className="text-slate-600 mt-0.5 shrink-0" />
-      <span className="text-[11px] text-slate-500 leading-relaxed">{text}</span>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="card w-full max-w-2xl flex flex-col" style={{ height: '80vh' }}>
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 shrink-0">
+          <div className="w-8 h-8 rounded-lg bg-brand-500/20 flex items-center justify-center">
+            <Bot size={15} className="text-brand-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-200 truncate">{task.title}</p>
+            <p className="text-[10px] text-slate-500">AI tutor · powered by Ollama</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+            <X size={17} />
+          </button>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {messages.map((msg, i) => (
+            <div key={i} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
+                msg.role === 'user' ? 'bg-brand-500/30' : 'bg-slate-700'
+              }`}>
+                {msg.role === 'user'
+                  ? <User size={13} className="text-brand-300" />
+                  : <Bot size={13} className="text-slate-300" />
+                }
+              </div>
+              <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+                msg.role === 'user'
+                  ? 'bg-brand-500/20 text-brand-100 rounded-tr-sm'
+                  : 'bg-slate-800 text-slate-200 rounded-tl-sm'
+              }`}>
+                {msg.content}
+              </div>
+            </div>
+          ))}
+          {sending && (
+            <div className="flex items-start gap-2.5">
+              <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
+                <Bot size={13} className="text-slate-300" />
+              </div>
+              <div className="bg-slate-800 rounded-2xl rounded-tl-sm px-3.5 py-2.5">
+                <Loader2 size={14} className="text-slate-400 animate-spin" />
+              </div>
+            </div>
+          )}
+          {error && (
+            <p className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2 flex items-center gap-1.5">
+              <AlertCircle size={12} />{error}
+            </p>
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Resources strip */}
+        {task.resources && (
+          <div className="px-4 py-2 border-t border-slate-800/60 bg-slate-900/40 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] text-slate-600 font-medium uppercase tracking-wide shrink-0">Resources:</span>
+              <ResourceLinks text={task.resources} />
+            </div>
+          </div>
+        )}
+
+        {/* Input */}
+        <div className="border-t border-slate-800 p-3 shrink-0">
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-brand-500 resize-none"
+              placeholder="Ask a question… (Enter to send)"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKey}
+              style={{ maxHeight: '100px' }}
+            />
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || sending}
+              className="btn-primary p-2.5 shrink-0 disabled:opacity-40"
+            >
+              <Send size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -112,10 +266,12 @@ function TaskCard({ task, onToggle, accentText }: {
   accentText: string
 }) {
   const [expanded, setExpanded] = useState(false)
-  const hasDetails = !!(task.description || task.resources || task.estimated_hours > 0)
+  const [chatOpen, setChatOpen] = useState(false)
+  const hasExpandable = !!(task.description)
   const priority = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.medium
 
   return (
+    <>
     <div className={`group rounded-xl border transition-all duration-200 ${
       task.completed
         ? 'bg-slate-900/30 border-slate-800/60'
@@ -153,37 +309,41 @@ function TaskCard({ task, onToggle, accentText }: {
             </div>
           </div>
 
-          {/* Always-visible description preview */}
+          {/* Description preview / expanded */}
           {task.description && !expanded && (
             <p className="text-xs text-slate-500 mt-1 leading-relaxed line-clamp-2">{task.description}</p>
           )}
-
-          {/* Expanded details */}
-          {expanded && (
-            <div className="mt-2 space-y-2">
-              {task.description && (
-                <p className="text-xs text-slate-400 leading-relaxed">{task.description}</p>
-              )}
-              {task.resources && <ResourceLinks text={task.resources} />}
-            </div>
+          {expanded && task.description && (
+            <p className="text-xs text-slate-400 mt-1 leading-relaxed">{task.description}</p>
           )}
 
-          {/* Expand toggle */}
-          {hasDetails && (
+          {/* Resources — always visible */}
+          {task.resources && <ResourceLinks text={task.resources} />}
+
+          {/* Footer actions */}
+          <div className="flex items-center gap-3 mt-2">
+            {hasExpandable && (
+              <button
+                type="button"
+                onClick={() => setExpanded(v => !v)}
+                className={`flex items-center gap-1 text-[10px] font-medium transition-colors ${accentText} opacity-70 hover:opacity-100`}
+              >
+                {expanded ? <><ChevronUp size={10} />Less</> : <><ChevronDown size={10} />More</>}
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setExpanded(v => !v)}
-              className={`flex items-center gap-1 mt-1.5 text-[10px] font-medium transition-colors ${accentText} opacity-70 hover:opacity-100`}
+              onClick={() => setChatOpen(true)}
+              className="flex items-center gap-1 text-[10px] font-medium text-slate-500 hover:text-brand-400 transition-colors ml-auto"
             >
-              {expanded
-                ? <><ChevronUp size={10} />Hide details</>
-                : <><ChevronDown size={10} />Show details{task.resources ? ' & resources' : ''}</>
-              }
+              <MessageCircle size={11} />Discuss with AI
             </button>
-          )}
+          </div>
         </div>
       </div>
     </div>
+    {chatOpen && <TaskChatModal task={task} onClose={() => setChatOpen(false)} />}
+    </>
   )
 }
 

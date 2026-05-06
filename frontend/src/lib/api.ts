@@ -346,6 +346,14 @@ export async function togglePrepTask(taskId: number, completed: boolean): Promis
   return res.data
 }
 
+export async function chatAboutTask(
+  messages: { role: string; content: string }[],
+  task: { title: string; description: string; resources: string },
+): Promise<string> {
+  const res = await api.post('/prep/task-chat', { messages, task })
+  return res.data.reply
+}
+
 export async function checkInToday(planId: number): Promise<{ streak: PrepStreak; todayCheckin: boolean }> {
   const res = await api.post(`/prep/plans/${planId}/checkin`, {})
   return res.data

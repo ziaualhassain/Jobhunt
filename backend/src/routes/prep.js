@@ -3,7 +3,7 @@ const multer = require('multer');
 const router = express.Router();
 const { pool } = require('../db/database');
 const requireAuth = require('../middleware/auth');
-const { generatePlan, parseUpload, structureFromMessage } = require('../services/prepCoach');
+const { generatePlan, parseUpload, structureFromMessage, chatAboutTask } = require('../services/prepCoach');
 
 router.use(requireAuth);
 
@@ -245,6 +245,21 @@ router.post('/plans/:id/checkin', async (req, res) => {
     const streak = calcStreak(checkins.map(c => c.checkin_date));
     res.json({ streak, todayCheckin: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/prep/task-chat  (stateless — client sends full history each turn)
+router.post('/task-chat', async (req, res) => {
+  const { messages = [], task = {} } = req.body;
+  if (!messages.length) return res.status(400).json({ error: 'messages required' });
+  try {
+    const reply = await chatAboutTask(messages, task);
+    res.json({ reply });
+  } catch (err) {
+    console.error('[Prep task-chat]', err.message);
+    if (err.message === 'NO_BACKEND')
+      return res.status(503).json({ error: 'No AI backend. Install Ollama or set ANTHROPIC_API_KEY.' });
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
