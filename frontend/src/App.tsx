@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import ProfilePage from './pages/ProfilePage'
 import ResumeEnhancerPage from './pages/ResumeEnhancerPage'
+import InterviewCoachPage from './pages/InterviewCoachPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -62,6 +63,17 @@ export default function App() {
                 <FileSearch2 size={15} />
                 Resume Enhancer
               </NavLink>
+              <NavLink
+                to="/interview-coach"
+                className={({ isActive }) =>
+                  `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  }`
+                }
+              >
+                <MessageSquare size={15} />
+                Interview Coach
+              </NavLink>
             </nav>
             <div className="ml-auto flex items-center gap-2">
               <NavLink
@@ -97,6 +109,7 @@ export default function App() {
           <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/resume-enhancer" element={<ProtectedRoute><ResumeEnhancerPage /></ProtectedRoute>} />
+          <Route path="/interview-coach" element={<ProtectedRoute><InterviewCoachPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
