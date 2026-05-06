@@ -125,4 +125,84 @@ async function analyzeResume(resumeText) {
   throw new Error('NO_BACKEND');
 }
 
-module.exports = { extractText, analyzeResume, isOllamaAvailable };
+// ─── Resume Enhancer (Claude only) ─────────────────────────────────────────
+
+const ENHANCE_SYSTEM_PROMPT = `You are an expert ATS (Applicant Tracking System) analyst and resume coach.
+Analyze the provided resume against the candidate's target role and required skills.
+Score sections fairly (0-100). Be honest — only give high scores for genuinely strong sections.
+Provide specific, actionable feedback. Identify real issues and concrete improvements.`;
+
+async function enhanceResume(resumeText, targetRole, targetSkills) {
+  const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const schema = {
+    type: 'object',
+    properties: {
+      overall_score: { type: 'number' },
+      grade: { type: 'string', enum: ['A', 'B', 'C', 'D', 'F'] },
+      sections: {
+        type: 'object',
+        properties: {
+          ats_compatibility:        { type: 'object', properties: { score: { type: 'number' }, feedback: { type: 'string' } }, required: ['score', 'feedback'], additionalProperties: false },
+          keyword_match:            { type: 'object', properties: { score: { type: 'number' }, matched: { type: 'array', items: { type: 'string' } }, missing: { type: 'array', items: { type: 'string' } }, feedback: { type: 'string' } }, required: ['score', 'matched', 'missing', 'feedback'], additionalProperties: false },
+          experience_presentation:  { type: 'object', properties: { score: { type: 'number' }, feedback: { type: 'string' } }, required: ['score', 'feedback'], additionalProperties: false },
+          skills_section:           { type: 'object', properties: { score: { type: 'number' }, feedback: { type: 'string' } }, required: ['score', 'feedback'], additionalProperties: false },
+          quantification:           { type: 'object', properties: { score: { type: 'number' }, feedback: { type: 'string' } }, required: ['score', 'feedback'], additionalProperties: false },
+        },
+        required: ['ats_compatibility', 'keyword_match', 'experience_presentation', 'skills_section', 'quantification'],
+        additionalProperties: false,
+      },
+      issues: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            severity: { type: 'string', enum: ['high', 'medium', 'low'] },
+            title: { type: 'string' },
+            detail: { type: 'string' },
+          },
+          required: ['severity', 'title', 'detail'],
+          additionalProperties: false,
+        },
+      },
+      improvements: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            priority: { type: 'number' },
+            action: { type: 'string' },
+            impact: { type: 'string' },
+          },
+          required: ['priority', 'action', 'impact'],
+          additionalProperties: false,
+        },
+      },
+      summary: { type: 'string' },
+    },
+    required: ['overall_score', 'grade', 'sections', 'issues', 'improvements', 'summary'],
+    additionalProperties: false,
+  };
+
+  const userMessage = `Target Role: ${targetRole}
+Required Skills / Keywords: ${targetSkills}
+
+Resume:
+${resumeText.slice(0, 12000)}`;
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 2048,
+    thinking: { type: 'adaptive' },
+    system: [{ type: 'text', text: ENHANCE_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: userMessage }],
+    output_config: {
+      format: { type: 'json_schema', json_schema: { name: 'resume_enhancement', schema } },
+    },
+  });
+
+  const textBlock = response.content.find(b => b.type === 'text');
+  return JSON.parse(textBlock.text);
+}
+
+module.exports = { extractText, analyzeResume, enhanceResume, isOllamaAvailable };

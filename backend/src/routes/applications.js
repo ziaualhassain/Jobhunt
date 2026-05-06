@@ -66,8 +66,8 @@ router.post('/', async (req, res) => {
     salary, job_type, source, tags, status = 'saved', notes = '',
   } = req.body;
 
-  if (!title || !company)
-    return res.status(400).json({ error: 'title and company are required' });
+  const resolvedTitle = (title || '').trim() || 'Untitled Position';
+  const resolvedCompany = (company || '').trim() || 'Unknown Company';
 
   try {
     const applied_date = status === 'applied' ? new Date().toISOString() : null;
@@ -77,7 +77,7 @@ router.post('/', async (req, res) => {
          salary, job_type, source, tags, status, notes, applied_date)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *
-    `, [req.user.id, job_id, title, company, location, url, description,
+    `, [req.user.id, job_id, resolvedTitle, resolvedCompany, location, url, description,
         salary, job_type, source, tags, status, notes, applied_date]);
     res.status(201).json(rows[0]);
   } catch (err) {

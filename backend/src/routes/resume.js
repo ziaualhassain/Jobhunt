@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { extractText, analyzeResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
+const { extractText, analyzeResume, enhanceResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
 
 const router = express.Router();
 
@@ -59,6 +59,31 @@ router.post('/analyze', upload.single('resume'), async (req, res) => {
       return res.status(503).json({ error: 'Ollama is not running. Start it with: ollama serve' });
     }
     res.status(500).json({ error: err.message || 'Resume analysis failed' });
+  }
+});
+
+// POST /api/resume/enhance
+router.post('/enhance', upload.single('resume'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const targetRole = (req.body.targetRole || '').trim();
+  const targetSkills = (req.body.targetSkills || '').trim();
+  if (!targetRole) return res.status(400).json({ error: 'targetRole is required' });
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(503).json({ error: 'Resume enhancement requires an Anthropic API key. Set ANTHROPIC_API_KEY in backend/.env' });
+  }
+
+  try {
+    const text = await extractText(req.file.buffer, req.file.mimetype);
+    if (!text || text.trim().length < 50) {
+      return res.status(422).json({ error: 'Could not extract enough text from the file' });
+    }
+    const result = await enhanceResume(text, targetRole, targetSkills);
+    res.json(result);
+  } catch (err) {
+    console.error('[Resume Enhance] failed:', err.message);
+    if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
+    res.status(500).json({ error: err.message || 'Resume enhancement failed' });
   }
 });
 

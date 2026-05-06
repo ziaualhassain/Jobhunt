@@ -144,3 +144,40 @@ export async function analyzeResume(file: File): Promise<{ analysis: ResumeAnaly
   });
   return res.data;
 }
+
+// ── Resume Enhancer ───────────────────────────────────────────────────────────
+
+export interface SectionScore {
+  score: number
+  feedback: string
+}
+
+export interface ResumeEnhancement {
+  overall_score: number
+  grade: string
+  sections: {
+    ats_compatibility: SectionScore
+    keyword_match: SectionScore & { matched: string[]; missing: string[] }
+    experience_presentation: SectionScore
+    skills_section: SectionScore
+    quantification: SectionScore
+  }
+  issues: { severity: 'high' | 'medium' | 'low'; title: string; detail: string }[]
+  improvements: { priority: number; action: string; impact: string }[]
+  summary: string
+}
+
+export async function enhanceResume(
+  file: File,
+  targetRole: string,
+  targetSkills: string,
+): Promise<ResumeEnhancement> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('targetRole', targetRole)
+  form.append('targetSkills', targetSkills)
+  const res = await api.post('/resume/enhance', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
