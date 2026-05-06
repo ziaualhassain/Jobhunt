@@ -118,7 +118,7 @@ async function fetchArbeitNow(keywords) {
         job_id: `arbeitnow-${job.slug}`,
         title: job.title,
         company: job.company_name,
-        location: job.location || 'Remote',
+        location: 'Remote', // job.remote === true so normalize location
         url: job.url,
         description: stripHtml(job.description || ''),
         salary: '',
@@ -216,12 +216,13 @@ async function aggregateJobs(filters = {}) {
     });
   }
 
-  // Tag filter
+  // Tag filter — each tag is split into words (AND), tags are OR-ed
   if (tags.length > 0) {
-    const tagList = tags.map(t => t.toLowerCase());
     allJobs = allJobs.filter(job => {
       const text = `${job.title} ${job.tags} ${job.description}`.toLowerCase();
-      return tagList.some(t => text.includes(t));
+      return tags.some(tag =>
+        tag.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 1).every(w => text.includes(w))
+      );
     });
   }
 
@@ -230,7 +231,8 @@ async function aggregateJobs(filters = {}) {
     const loc = location.toLowerCase();
     allJobs = allJobs.filter(job => {
       const jobLoc = (job.location || '').toLowerCase();
-      const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere');
+      const isRemote = jobLoc.includes('remote') || jobLoc.includes('anywhere') ||
+        jobLoc.includes('worldwide') || jobLoc.includes('global') || jobLoc.includes('international');
       const matchesLoc = loc ? jobLoc.includes(loc) : false;
 
       if (loc && remote)  return matchesLoc || isRemote;  // Hyderabad + remote

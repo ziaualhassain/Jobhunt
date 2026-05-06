@@ -32,19 +32,18 @@ async function getTheirStackJobs(filters) {
     conditions.push(`(${tagConditions.join(' OR ')})`);
   }
 
-  if (location || remote) {
+  if (location) {
     const loc = location.toLowerCase();
-    if (loc && remote) {
-      params.push(`%${loc}%`);
+    params.push(`%${loc}%`);
+    if (remote) {
+      // city + remote ON: show city matches OR remote/anywhere jobs
       conditions.push(`(LOWER(location) LIKE $${params.length} OR LOWER(location) LIKE '%remote%' OR LOWER(location) LIKE '%anywhere%')`);
-    } else if (loc && !remote) {
-      params.push(`%${loc}%`);
-      conditions.push(`(LOWER(location) LIKE $${params.length} AND LOWER(location) NOT LIKE '%remote%' AND LOWER(location) NOT LIKE '%anywhere%')`);
     } else {
-      // remote=true, no location — remote jobs only
-      conditions.push(`(LOWER(location) LIKE '%remote%' OR LOWER(location) LIKE '%anywhere%')`);
+      // city + remote OFF: city matches only (exclude remote)
+      conditions.push(`(LOWER(location) LIKE $${params.length} AND LOWER(location) NOT LIKE '%remote%' AND LOWER(location) NOT LIKE '%anywhere%')`);
     }
   }
+  // remote=true, no location → no location filter; TheirStack rows are India jobs by default
 
   if (experienceLevel) {
     params.push(`%${experienceLevel.toLowerCase()}%`);
