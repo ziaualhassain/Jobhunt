@@ -80,6 +80,25 @@ async function initDb() {
       date_posted DATE,
       fetched_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS interview_sessions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      company TEXT DEFAULT '',
+      role TEXT DEFAULT '',
+      mode TEXT DEFAULT 'practice',
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS interview_messages (
+      id SERIAL PRIMARY KEY,
+      session_id INTEGER NOT NULL REFERENCES interview_sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   // Add preferences column if it doesn't exist yet (idempotent migration)
   await pool.query(`

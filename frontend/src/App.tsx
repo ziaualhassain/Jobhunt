@@ -1,5 +1,5 @@
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { Search, Kanban, Cloud, LogOut, FileSearch2 } from 'lucide-react'
+import { Search, Kanban, Cloud, LogOut, FileSearch2, MessageSquare } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'

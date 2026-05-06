@@ -181,3 +181,57 @@ export async function enhanceResume(
   })
   return res.data
 }
+
+// ── Interview Coach ───────────────────────────────────────────────────────────
+
+export interface InterviewSession {
+  id: number
+  title: string
+  company: string
+  role: string
+  mode: string
+  message_count?: number
+  created_at: string
+  updated_at: string
+}
+
+export interface InterviewMessage {
+  id: number
+  session_id: number
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface InterviewSessionDetail extends InterviewSession {
+  messages: InterviewMessage[]
+}
+
+export async function listInterviewSessions(): Promise<InterviewSession[]> {
+  const res = await api.get('/interview/sessions')
+  return res.data
+}
+
+export async function createInterviewSession(data: {
+  title: string
+  company?: string
+  role?: string
+  mode?: string
+}): Promise<InterviewSession> {
+  const res = await api.post('/interview/sessions', data)
+  return res.data
+}
+
+export async function getInterviewSession(id: number): Promise<InterviewSessionDetail> {
+  const res = await api.get(`/interview/sessions/${id}`)
+  return res.data
+}
+
+export async function sendInterviewMessage(sessionId: number, message: string): Promise<InterviewMessage> {
+  const res = await api.post(`/interview/sessions/${sessionId}/chat`, { message })
+  return res.data
+}
+
+export async function deleteInterviewSession(id: number): Promise<void> {
+  await api.delete(`/interview/sessions/${id}`)
+}
