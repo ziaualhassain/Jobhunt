@@ -217,14 +217,14 @@ export async function rewriteResume(
 }
 
 // Downloads a text-based ATS-friendly PDF generated server-side via pdfkit
-export async function downloadResumePdf(resume: GeneratedResume): Promise<Blob> {
-  const res = await api.post('/resume/pdf', resume, { responseType: 'blob' })
+export async function downloadResumePdf(resume: GeneratedResume, template = 'jake'): Promise<Blob> {
+  const res = await api.post(`/resume/pdf?template=${template}`, resume, { responseType: 'blob' })
   return res.data
 }
 
-// Downloads Jake's Resume LaTeX source (.tex) — compile on Overleaf or with pdflatex
-export async function downloadResumeLatex(resume: GeneratedResume): Promise<Blob> {
-  const res = await api.post('/resume/latex', resume, { responseType: 'blob' })
+// Downloads LaTeX source (.tex) — compile on Overleaf or with pdflatex
+export async function downloadResumeLatex(resume: GeneratedResume, template = 'jake'): Promise<Blob> {
+  const res = await api.post(`/resume/latex?template=${template}`, resume, { responseType: 'blob' })
   return res.data
 }
 
@@ -358,12 +358,23 @@ export async function togglePrepTask(taskId: number, completed: boolean): Promis
   return res.data
 }
 
-export async function chatAboutTask(
-  messages: { role: string; content: string }[],
-  task: { title: string; description: string; resources: string },
-): Promise<string> {
-  const res = await api.post('/prep/task-chat', { messages, task })
-  return res.data.reply
+export interface PrepTaskMessage {
+  id: number
+  task_id: number
+  user_id: number
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export async function getTaskMessages(taskId: number): Promise<PrepTaskMessage[]> {
+  const res = await api.get(`/prep/tasks/${taskId}/messages`)
+  return res.data
+}
+
+export async function sendTaskMessage(taskId: number, message: string): Promise<{ reply: string }> {
+  const res = await api.post(`/prep/tasks/${taskId}/chat`, { message })
+  return res.data
 }
 
 export async function checkInToday(planId: number): Promise<{ streak: PrepStreak; todayCheckin: boolean }> {

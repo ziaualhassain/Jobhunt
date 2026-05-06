@@ -136,6 +136,15 @@ async function initDb() {
       created_at TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, plan_id, checkin_date)
     );
+
+    CREATE TABLE IF NOT EXISTS prep_task_messages (
+      id SERIAL PRIMARY KEY,
+      task_id INTEGER NOT NULL REFERENCES prep_tasks(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
   // Add preferences column if it doesn't exist yet (idempotent migration)
   await pool.query(`

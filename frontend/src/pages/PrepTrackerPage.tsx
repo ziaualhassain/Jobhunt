@@ -8,9 +8,10 @@ import {
 } from 'lucide-react'
 import {
   listPrepPlans, getPrepPlan, generatePrepPlan, uploadPrepPlan,
-  deletePrepPlan, togglePrepTask, checkInToday, chatAboutTask,
+  deletePrepPlan, togglePrepTask, checkInToday,
+  getTaskMessages, sendTaskMessage,
 } from '../lib/api'
-import type { PrepPlan, PrepTask } from '../lib/api'
+import type { PrepPlan, PrepTask, PrepTaskMessage } from '../lib/api'
 
 // ─── constants ────────────────────────────────────────────────────────────────
 
@@ -99,66 +100,59 @@ function ResourceLinks({ text }: { text: string }) {
 }
 
 // ─── TaskChatModal ────────────────────────────────────────────────────────────
-
-interface ChatMessage { role: 'user' | 'assistant'; content: string }
+// Chat history is persisted to the database — messages survive modal close/refresh.
 
 function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const qc = useQueryClient()
   const [input, setInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState('')
+  const [sendError, setSendError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const seededRef = useRef(false)
 
-  // Seed opening message from the AI
+  // Load persisted history from DB
+  const historyQuery = useQuery({
+    queryKey: ['task-messages', task.id],
+    queryFn: () => getTaskMessages(task.id),
+  })
+
+  const sendMutation = useMutation({
+    mutationFn: (message: string) => sendTaskMessage(task.id, message),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['task-messages', task.id] })
+      setSendError('')
+    },
+    onError: () => setSendError('Reply failed. Is Ollama running or ANTHROPIC_API_KEY set?'),
+  })
+
+  // Auto-seed an overview message the first time a task is opened
   useEffect(() => {
-    async function seed() {
-      setSending(true)
-      try {
-        const seedMsg: ChatMessage = {
-          role: 'user',
-          content: `I want to learn about: ${task.title}. Can you give me a quick overview and tell me what I should focus on?`,
-        }
-        setMessages([seedMsg])
-        const reply = await chatAboutTask([seedMsg], {
-          title: task.title,
-          description: task.description,
-          resources: task.resources,
-        })
-        setMessages([seedMsg, { role: 'assistant', content: reply }])
-      } catch {
-        setError('Could not start chat. Is Ollama running?')
-      } finally { setSending(false) }
+    if (
+      historyQuery.data &&
+      historyQuery.data.length === 0 &&
+      !seededRef.current &&
+      !sendMutation.isPending
+    ) {
+      seededRef.current = true
+      sendMutation.mutate(
+        `I want to learn about: ${task.title}. Can you give me a quick overview and tell me what I should focus on?`
+      )
     }
-    seed()
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [historyQuery.data])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const messages: PrepTaskMessage[] = historyQuery.data ?? []
+  const isSending = sendMutation.isPending
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending])
+  }, [messages.length, isSending])
 
-  async function handleSend() {
+  function handleSend() {
     const text = input.trim()
-    if (!text || sending) return
+    if (!text || isSending) return
     setInput('')
-    setError('')
-    const userMsg: ChatMessage = { role: 'user', content: text }
-    const next = [...messages, userMsg]
-    setMessages(next)
-    setSending(true)
-    try {
-      const reply = await chatAboutTask(next, {
-        title: task.title,
-        description: task.description,
-        resources: task.resources,
-      })
-      setMessages(m => [...m, { role: 'assistant', content: reply }])
-    } catch {
-      setError('Reply failed. Is Ollama running?')
-    } finally {
-      setSending(false)
-      inputRef.current?.focus()
-    }
+    setSendError('')
+    sendMutation.mutate(text)
   }
 
   function handleKey(e: React.KeyboardEvent) {
@@ -175,7 +169,7 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-200 truncate">{task.title}</p>
-            <p className="text-[10px] text-slate-500">AI tutor · powered by Ollama</p>
+            <p className="text-[10px] text-slate-500">AI tutor · history saved automatically</p>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
             <X size={17} />
@@ -184,8 +178,14 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map((msg, i) => (
-            <div key={i} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+          {historyQuery.isLoading && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 size={18} className="text-slate-500 animate-spin mr-2" />
+              <span className="text-sm text-slate-500">Loading history…</span>
+            </div>
+          )}
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
                 msg.role === 'user' ? 'bg-brand-500/30' : 'bg-slate-700'
               }`}>
@@ -203,7 +203,7 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
               </div>
             </div>
           ))}
-          {sending && (
+          {isSending && (
             <div className="flex items-start gap-2.5">
               <div className="w-7 h-7 rounded-full bg-slate-700 flex items-center justify-center">
                 <Bot size={13} className="text-slate-300" />
@@ -213,9 +213,9 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
               </div>
             </div>
           )}
-          {error && (
+          {sendError && (
             <p className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2 flex items-center gap-1.5">
-              <AlertCircle size={12} />{error}
+              <AlertCircle size={12} />{sendError}
             </p>
           )}
           <div ref={bottomRef} />
@@ -246,7 +246,7 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || isSending}
               className="btn-primary p-2.5 shrink-0 disabled:opacity-40"
             >
               <Send size={14} />

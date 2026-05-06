@@ -200,6 +200,71 @@ router.delete('/plans/:id', async (req, res) => {
 
 // ── tasks ─────────────────────────────────────────────────────────────────────
 
+// GET /api/prep/tasks/:id/messages — load persisted chat history for a task
+router.get('/tasks/:id/messages', async (req, res) => {
+  try {
+    const { rows: [task] } = await pool.query(
+      `SELECT t.id FROM prep_tasks t
+       JOIN prep_plans p ON p.id = t.plan_id
+       WHERE t.id=$1 AND p.user_id=$2`,
+      [req.params.id, req.user.id],
+    );
+    if (!task) return res.status(404).json({ error: 'Not found' });
+    const { rows } = await pool.query(
+      'SELECT id, task_id, user_id, role, content, created_at FROM prep_task_messages WHERE task_id=$1 AND user_id=$2 ORDER BY created_at',
+      [task.id, req.user.id],
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/prep/tasks/:id/chat — send a message, get AI reply, persist both
+router.post('/tasks/:id/chat', async (req, res) => {
+  const { message } = req.body;
+  if (!message?.trim()) return res.status(400).json({ error: 'message is required' });
+  try {
+    const { rows: [task] } = await pool.query(
+      `SELECT t.* FROM prep_tasks t
+       JOIN prep_plans p ON p.id = t.plan_id
+       WHERE t.id=$1 AND p.user_id=$2`,
+      [req.params.id, req.user.id],
+    );
+    if (!task) return res.status(404).json({ error: 'Not found' });
+
+    const { rows: history } = await pool.query(
+      'SELECT role, content FROM prep_task_messages WHERE task_id=$1 AND user_id=$2 ORDER BY created_at',
+      [task.id, req.user.id],
+    );
+
+    const messages = [
+      ...history,
+      { role: 'user', content: message.trim() },
+    ];
+
+    let reply;
+    try {
+      reply = await chatAboutTask(messages, { title: task.title, description: task.description, resources: task.resources });
+    } catch (e) {
+      if (e.message === 'NO_BACKEND') return res.status(503).json({ error: 'No AI backend. Install Ollama or set ANTHROPIC_API_KEY.' });
+      throw e;
+    }
+
+    await pool.query(
+      'INSERT INTO prep_task_messages (task_id, user_id, role, content) VALUES ($1,$2,$3,$4)',
+      [task.id, req.user.id, 'user', message.trim()],
+    );
+    await pool.query(
+      'INSERT INTO prep_task_messages (task_id, user_id, role, content) VALUES ($1,$2,$3,$4)',
+      [task.id, req.user.id, 'assistant', reply],
+    );
+
+    res.json({ reply });
+  } catch (err) {
+    console.error('[Prep task-chat]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.patch('/tasks/:id', async (req, res) => {
   try {
     const { completed } = req.body;
@@ -247,19 +312,5 @@ router.post('/plans/:id/checkin', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// POST /api/prep/task-chat  (stateless — client sends full history each turn)
-router.post('/task-chat', async (req, res) => {
-  const { messages = [], task = {} } = req.body;
-  if (!messages.length) return res.status(400).json({ error: 'messages required' });
-  try {
-    const reply = await chatAboutTask(messages, task);
-    res.json({ reply });
-  } catch (err) {
-    console.error('[Prep task-chat]', err.message);
-    if (err.message === 'NO_BACKEND')
-      return res.status(503).json({ error: 'No AI backend. Install Ollama or set ANTHROPIC_API_KEY.' });
-    res.status(500).json({ error: err.message });
-  }
-});
 
 module.exports = router;

@@ -295,6 +295,24 @@ function toPlainText(r: GeneratedResume): string {
   return lines.join('\n')
 }
 
+// ─── Template metadata ────────────────────────────────────────────────────────
+
+const PDF_TEMPLATES = [
+  { id: 'jake',        label: 'Jake Classic',  desc: 'Standard two-column, Helvetica' },
+  { id: 'traditional', label: 'Corporate Pro', desc: 'Times Roman, left-aligned' },
+  { id: 'clean',       label: 'Modern Clean',  desc: 'Minimal, stacked entries' },
+  { id: 'technical',   label: 'Tech Focus',    desc: 'Skills & projects first' },
+  { id: 'compact',     label: 'Compact Plus',  desc: 'Small font, fits more content' },
+]
+
+const LATEX_TEMPLATES = [
+  { id: 'jake',         label: "Jake's Resume", desc: 'The classic standard' },
+  { id: 'professional', label: 'Professional',  desc: 'Bold headings, corporate' },
+  { id: 'compact',      label: 'Compact 10pt',  desc: 'Dense, 1-page friendly' },
+  { id: 'technical',    label: 'Tech Focus',    desc: 'Skills & projects first' },
+  { id: 'minimal',      label: 'Minimal ATS',   desc: 'Zero packages, max compat' },
+]
+
 function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -310,6 +328,10 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
   const [copied, setCopied] = useState(false)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [downloadingTex, setDownloadingTex] = useState(false)
+  const [pdfTemplate, setPdfTemplate] = useState('jake')
+  const [latexTemplate, setLatexTemplate] = useState('jake')
+  const [showPdfPicker, setShowPdfPicker] = useState(false)
+  const [showLatexPicker, setShowLatexPicker] = useState(false)
 
   function handleCopy() {
     navigator.clipboard.writeText(toPlainText(resume))
@@ -318,9 +340,9 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
   }
 
   async function handleDownloadPdf() {
-    setDownloadingPdf(true)
+    setDownloadingPdf(true); setShowPdfPicker(false)
     try {
-      const blob = await downloadResumePdf(resume)
+      const blob = await downloadResumePdf(resume, pdfTemplate)
       const name = resume.name?.replace(/\s+/g, '_') || 'resume'
       triggerBlobDownload(blob, `${name}_resume.pdf`)
     } catch {
@@ -331,9 +353,9 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
   }
 
   async function handleDownloadLatex() {
-    setDownloadingTex(true)
+    setDownloadingTex(true); setShowLatexPicker(false)
     try {
-      const blob = await downloadResumeLatex(resume)
+      const blob = await downloadResumeLatex(resume, latexTemplate)
       const name = resume.name?.replace(/\s+/g, '_') || 'resume'
       triggerBlobDownload(blob, `${name}_resume.tex`)
     } catch {
@@ -345,6 +367,9 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
 
   const { contact } = resume
 
+  const activePdfTpl = PDF_TEMPLATES.find(t => t.id === pdfTemplate)!
+  const activeLatexTpl = LATEX_TEMPLATES.find(t => t.id === latexTemplate)!
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -354,35 +379,95 @@ function ResumePreview({ resume }: { resume: GeneratedResume }) {
           <span className="text-sm font-semibold text-slate-200">Rewritten Resume</span>
           <span className="text-xs text-slate-500 bg-slate-800 border border-slate-700 px-2 py-0.5 rounded-full">AI Generated</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={handleCopy}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 transition-colors"
           >
             {copied ? <><Check size={12} className="text-emerald-400" />Copied!</> : <><Copy size={12} />Copy text</>}
           </button>
-          <button
-            onClick={handleDownloadLatex}
-            disabled={downloadingTex}
-            title="Download LaTeX source — compile on Overleaf or with pdflatex"
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-600 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50"
-          >
-            {downloadingTex
-              ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
-              : <><FileCode size={12} />Download .tex</>
-            }
-          </button>
-          <button
-            onClick={handleDownloadPdf}
-            disabled={downloadingPdf}
-            title="ATS-friendly text-based PDF (fully parseable by applicant tracking systems)"
-            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-brand-500/40 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-50"
-          >
-            {downloadingPdf
-              ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
-              : <><Download size={12} />Download PDF</>
-            }
-          </button>
+
+          {/* .tex download with template picker */}
+          <div className="relative">
+            <div className="flex items-stretch rounded-lg border border-slate-600 overflow-hidden">
+              <button
+                onClick={handleDownloadLatex}
+                disabled={downloadingTex}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-slate-800/60 text-slate-300 hover:bg-slate-700 transition-colors disabled:opacity-50"
+              >
+                {downloadingTex
+                  ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
+                  : <><FileCode size={12} />.tex — {activeLatexTpl.label}</>
+                }
+              </button>
+              <button
+                onClick={() => { setShowLatexPicker(v => !v); setShowPdfPicker(false) }}
+                className="px-1.5 bg-slate-700 text-slate-400 hover:text-slate-200 hover:bg-slate-600 transition-colors border-l border-slate-600 text-[10px]"
+                title="Choose LaTeX template"
+              >
+                <ChevronDown size={11} />
+              </button>
+            </div>
+            {showLatexPicker && (
+              <div className="absolute right-0 top-full mt-1 z-10 w-56 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium px-3 pt-2.5 pb-1">LaTeX Template</p>
+                {LATEX_TEMPLATES.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setLatexTemplate(t.id); setShowLatexPicker(false) }}
+                    className={`w-full text-left px-3 py-2 hover:bg-slate-700 transition-colors ${latexTemplate === t.id ? 'bg-slate-700/60' : ''}`}
+                  >
+                    <p className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                      {latexTemplate === t.id && <Check size={10} className="text-emerald-400" />}
+                      {t.label}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{t.desc}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* PDF download with template picker */}
+          <div className="relative">
+            <div className="flex items-stretch rounded-lg border border-brand-500/40 overflow-hidden">
+              <button
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-50"
+              >
+                {downloadingPdf
+                  ? <><Loader2 size={12} className="animate-spin" />Exporting…</>
+                  : <><Download size={12} />PDF — {activePdfTpl.label}</>
+                }
+              </button>
+              <button
+                onClick={() => { setShowPdfPicker(v => !v); setShowLatexPicker(false) }}
+                className="px-1.5 bg-brand-500/10 text-brand-500/70 hover:bg-brand-500/20 hover:text-brand-400 transition-colors border-l border-brand-500/30 text-[10px]"
+                title="Choose PDF template"
+              >
+                <ChevronDown size={11} />
+              </button>
+            </div>
+            {showPdfPicker && (
+              <div className="absolute right-0 top-full mt-1 z-10 w-56 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wide font-medium px-3 pt-2.5 pb-1">PDF Template</p>
+                {PDF_TEMPLATES.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => { setPdfTemplate(t.id); setShowPdfPicker(false) }}
+                    className={`w-full text-left px-3 py-2 hover:bg-slate-700 transition-colors ${pdfTemplate === t.id ? 'bg-slate-700/60' : ''}`}
+                  >
+                    <p className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                      {pdfTemplate === t.id && <Check size={10} className="text-emerald-400" />}
+                      {t.label}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{t.desc}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

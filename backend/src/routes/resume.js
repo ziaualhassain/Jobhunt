@@ -1,8 +1,8 @@
 const express = require('express');
 const multer = require('multer');
 const { extractText, analyzeResume, enhanceResume, rewriteResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
-const { generateResumePdf } = require('../services/resumePdf');
-const { generateResumeLatex } = require('../services/resumeLatex');
+const { generateResumePdf, TEMPLATE_LIST } = require('../services/resumePdf');
+const { generateResumeLatex, LATEX_TEMPLATE_LIST } = require('../services/resumeLatex');
 
 const router = express.Router();
 
@@ -119,12 +119,18 @@ router.post('/rewrite', upload.single('resume'), async (req, res) => {
   }
 });
 
-// POST /api/resume/pdf — generates an ATS-friendly text-based PDF from JSON resume data
+// GET /api/resume/templates — returns available PDF and LaTeX template metadata
+router.get('/templates', (req, res) => {
+  res.json({ pdf: TEMPLATE_LIST, latex: LATEX_TEMPLATE_LIST });
+});
+
+// POST /api/resume/pdf?template=jake — generates ATS-friendly text-based PDF
 router.post('/pdf', async (req, res) => {
   try {
     const resume = req.body;
     if (!resume || !resume.name) return res.status(400).json({ error: 'Invalid resume data' });
-    const buffer = await generateResumePdf(resume);
+    const templateId = req.query.template || 'jake';
+    const buffer = await generateResumePdf(resume, templateId);
     const filename = `${(resume.name || 'resume').replace(/\s+/g, '_')}_resume.pdf`;
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -135,12 +141,13 @@ router.post('/pdf', async (req, res) => {
   }
 });
 
-// POST /api/resume/latex — generates Jake's Resume LaTeX source (.tex) from JSON resume data
+// POST /api/resume/latex?template=jake — generates LaTeX source (.tex)
 router.post('/latex', async (req, res) => {
   try {
     const resume = req.body;
     if (!resume || !resume.name) return res.status(400).json({ error: 'Invalid resume data' });
-    const latex = generateResumeLatex(resume);
+    const templateId = req.query.template || 'jake';
+    const latex = generateResumeLatex(resume, templateId);
     const filename = `${(resume.name || 'resume').replace(/\s+/g, '_')}_resume.tex`;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
