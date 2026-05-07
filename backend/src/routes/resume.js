@@ -1,6 +1,6 @@
 const express = require('express');
 const multer = require('multer');
-const { extractText, analyzeResume, enhanceResume, rewriteResume, isOllamaAvailable } = require('../services/resumeAnalyzer');
+const { extractText, analyzeResume, enhanceResume, rewriteResume, extractStructured, isOllamaAvailable } = require('../services/resumeAnalyzer');
 const { generateResumePdf, TEMPLATE_LIST } = require('../services/resumePdf');
 const { generateResumeLatex, LATEX_TEMPLATE_LIST } = require('../services/resumeLatex');
 
@@ -116,6 +116,25 @@ router.post('/rewrite', upload.single('resume'), async (req, res) => {
       return res.status(503).json({ error: 'No AI backend configured. Install Ollama or set ANTHROPIC_API_KEY.' });
     if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
     res.status(500).json({ error: err.message || 'Resume rewrite failed' });
+  }
+});
+
+// POST /api/resume/extract — extract verbatim structure from uploaded resume (no rewriting)
+router.post('/extract', upload.single('resume'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  try {
+    const text = await extractText(req.file.buffer, req.file.mimetype);
+    if (!text || text.trim().length < 50) {
+      return res.status(422).json({ error: 'Could not extract enough text from the file' });
+    }
+    const result = await extractStructured(text);
+    res.json(result);
+  } catch (err) {
+    console.error('[Resume Extract] failed:', err.message);
+    if (err.message === 'NO_BACKEND')
+      return res.status(503).json({ error: 'No AI backend configured. Set ANTHROPIC_API_KEY or install Ollama.' });
+    if (err.status === 401) return res.status(503).json({ error: 'Invalid Anthropic API key' });
+    res.status(500).json({ error: err.message || 'Resume extraction failed' });
   }
 });
 

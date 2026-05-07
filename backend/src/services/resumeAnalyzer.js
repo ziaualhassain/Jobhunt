@@ -429,4 +429,130 @@ async function rewriteResume(resumeText, targetRole, targetSkills, achievements,
   throw new Error('NO_BACKEND');
 }
 
-module.exports = { extractText, analyzeResume, enhanceResume, rewriteResume, isOllamaAvailable };
+// ─── Resume Structure Extractor ──────────────────────────────────────────────
+
+const EXTRACT_SYSTEM = `You are a resume data extraction specialist.
+Extract all information from the provided resume text VERBATIM — do not rewrite, improve, or add any content that isn't in the original.
+If a field is not present in the resume, return an empty string or empty array as appropriate.`;
+
+async function extractStructuredWithClaude(resumeText) {
+  const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const contactSchema = {
+    type: 'object',
+    properties: {
+      email: { type: 'string' }, phone: { type: 'string' },
+      location: { type: 'string' }, linkedin: { type: 'string' },
+      github: { type: 'string' }, website: { type: 'string' },
+    },
+    required: ['email', 'phone', 'location', 'linkedin', 'github', 'website'],
+    additionalProperties: false,
+  };
+
+  const schema = {
+    type: 'object',
+    properties: {
+      name: { type: 'string' },
+      contact: contactSchema,
+      summary: { type: 'string' },
+      experience: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            title: { type: 'string' }, company: { type: 'string' },
+            location: { type: 'string' }, period: { type: 'string' },
+            bullets: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['title', 'company', 'location', 'period', 'bullets'],
+          additionalProperties: false,
+        },
+      },
+      skills: { type: 'array', items: { type: 'string' } },
+      education: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { degree: { type: 'string' }, institution: { type: 'string' }, year: { type: 'string' } },
+          required: ['degree', 'institution', 'year'],
+          additionalProperties: false,
+        },
+      },
+      projects: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: { name: { type: 'string' }, description: { type: 'string' }, tech: { type: 'string' } },
+          required: ['name', 'description', 'tech'],
+          additionalProperties: false,
+        },
+      },
+      certifications: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['name', 'contact', 'summary', 'experience', 'skills', 'education', 'projects', 'certifications'],
+    additionalProperties: false,
+  };
+
+  const response = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 4096,
+    thinking: { type: 'adaptive' },
+    system: [{ type: 'text', text: EXTRACT_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: `Extract all information from this resume exactly as written:\n\n${resumeText.slice(0, 12000)}` }],
+    output_config: { format: { type: 'json_schema', json_schema: { name: 'resume_extract', schema } } },
+  });
+
+  const textBlock = response.content.find(b => b.type === 'text');
+  return JSON.parse(textBlock.text);
+}
+
+async function extractStructuredWithOllama(resumeText) {
+  const model = process.env.OLLAMA_MODEL || 'llama3.2';
+  const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+
+  const template = `Return ONLY this JSON object (no markdown, no extra text):
+{
+  "name": "full name",
+  "contact": { "email": "", "phone": "", "location": "", "linkedin": "", "github": "", "website": "" },
+  "summary": "professional summary if present, else empty string",
+  "experience": [{ "title": "", "company": "", "location": "", "period": "", "bullets": [""] }],
+  "skills": ["skill1"],
+  "education": [{ "degree": "", "institution": "", "year": "" }],
+  "projects": [{ "name": "", "description": "", "tech": "" }],
+  "certifications": [""]
+}`;
+
+  const response = await axios.post(
+    `${baseUrl}/api/chat`,
+    {
+      model,
+      format: 'json',
+      stream: false,
+      messages: [
+        { role: 'system', content: `${EXTRACT_SYSTEM}\n\n${template}` },
+        { role: 'user', content: `Extract from this resume verbatim:\n\n${resumeText.slice(0, 8000)}` },
+      ],
+      options: { temperature: 0.1 },
+    },
+    { timeout: 180_000 }
+  );
+
+  const content = response.data?.message?.content;
+  if (!content) throw new Error('Empty response from Ollama');
+  return JSON.parse(content);
+}
+
+async function extractStructured(resumeText) {
+  if (process.env.ANTHROPIC_API_KEY) {
+    console.log('[Resume Extract] Using Claude API');
+    return extractStructuredWithClaude(resumeText);
+  }
+  if (await isOllamaAvailable()) {
+    const model = process.env.OLLAMA_MODEL || 'llama3.2';
+    console.log(`[Resume Extract] Using Ollama (${model})`);
+    return extractStructuredWithOllama(resumeText);
+  }
+  throw new Error('NO_BACKEND');
+}
+
+module.exports = { extractText, analyzeResume, enhanceResume, rewriteResume, extractStructured, isOllamaAvailable };
