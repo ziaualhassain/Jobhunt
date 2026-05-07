@@ -4,9 +4,9 @@
 
 /* ── Slate CSS variables ─────────────────────────────────────────────────────
    Dark mode (default): original Tailwind slate values as RGB triples.
-   Light mode: scale is inverted (50↔950, 100↔900, …) so every inline class
-   like bg-slate-900, text-slate-400, border-slate-800 automatically adapts —
-   no dark: prefix needed in component files.
+   Light mode: warm neutral stone palette — softer and warmer than plain white.
+   Every inline slate class (bg-slate-900, text-slate-400, etc.) auto-adapts
+   via these variables — no dark: prefix needed in page component files.
    ─────────────────────────────────────────────────────────────────────────── */
 
 :root {
@@ -21,40 +21,41 @@
   --sl-800:  30  41  59;
   --sl-900:  15  23  42;
   --sl-950:   2   6  23;
+
+  color-scheme: dark;
 }
 
 :root:not(.dark) {
-  /* Light mode — warm neutral stone palette, not cold blue-white */
-  --sl-50:  12  10   9;   /* stone-950 — darkest text                  */
-  --sl-100: 28  25  23;   /* stone-900 — primary headings               */
-  --sl-200: 41  37  36;   /* stone-800 — dark text                      */
-  --sl-300: 68  64  60;   /* stone-700 — body text                      */
-  --sl-400: 87  83  78;   /* stone-600 — secondary text                 */
-  --sl-500: 118 112 107;  /* stone-500 — muted / placeholder            */
-  --sl-600: 161 157 153;  /* warm mid-gray — subtle labels              */
-  --sl-700: 214 212 208;  /* warm light — borders                       */
-  --sl-800: 237 235 232;  /* warm surface — input bg, hover states      */
-  --sl-900: 250 249 247;  /* warm near-white — card bg                  */
-  --sl-950: 245 244 241;  /* warm off-white — page bg (slightly deeper  */
-                          /*   than card so cards appear elevated)       */
+  /* Warm neutral stone palette — subtle, not stark white */
+  --sl-50:  12  10   9;   /* stone-950 — darkest text          */
+  --sl-100: 28  25  23;   /* stone-900 — primary headings      */
+  --sl-200: 41  37  36;   /* stone-800 — dark text             */
+  --sl-300: 68  64  60;   /* stone-700 — body text             */
+  --sl-400: 87  83  78;   /* stone-600 — secondary text        */
+  --sl-500: 118 112 107;  /* stone-500 — muted / placeholder   */
+  --sl-600: 161 157 153;  /* warm mid-gray — subtle labels     */
+  --sl-700: 214 212 208;  /* warm light — borders              */
+  --sl-800: 237 235 232;  /* warm surface — input bg, hovers   */
+  --sl-900: 250 249 247;  /* warm near-white — card bg         */
+  --sl-950: 245 244 241;  /* warm off-white — page bg          */
+
+  color-scheme: light;
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
 
 @layer base {
   body {
-    /* dark:  bg-slate-950 = #020617, text-slate-100 = #f1f5f9  */
-    /* light: bg-slate-950 = #f5f4f1, text-slate-100 = #1c1917  */
+    /* dark:  bg-slate-950 = #020617   text-slate-100 = #f1f5f9  */
+    /* light: bg-slate-950 = #f5f4f1   text-slate-100 = #1c1917  */
     @apply bg-slate-950 text-slate-100 antialiased;
   }
 }
 
 /* ── Components ──────────────────────────────────────────────────────────── */
-/* Single definition works in both themes thanks to CSS variable inversion.  */
 
 @layer components {
   .card {
-    /* dark: bg #0f172a border #1e293b  |  light: bg #fff border #e2e8f0 */
     @apply bg-slate-900 border border-slate-800 rounded-xl;
   }
   .btn-primary {
@@ -62,20 +63,14 @@
            transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    /* dark: bg #1e293b hover #334155 border #334155 text #e2e8f0 */
-    /* light: bg #e2e8f0 hover #cbd5e1 border #cbd5e1 text #1e293b */
     @apply bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200
            font-medium px-4 py-2 rounded-lg transition-colors
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    /* dark: text #94a3b8 hover-text #f1f5f9 hover-bg #1e293b */
-    /* light: text #475569 hover-text #0f172a hover-bg #e2e8f0 */
     @apply text-slate-400 hover:text-slate-100 hover:bg-slate-800 px-3 py-2 rounded-lg transition-colors;
   }
   .input {
-    /* dark: bg #1e293b border #334155 text #e2e8f0 placeholder #64748b */
-    /* light: bg #e2e8f0 border #cbd5e1 text #1e293b placeholder #64748b */
     @apply bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2
            placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500
            focus:border-transparent w-full transition-colors;
@@ -85,8 +80,67 @@
   }
 }
 
+/* ── Light mode enhancements ─────────────────────────────────────────────── */
+/*   These rules only apply when .dark is absent from <html>.                 */
+
+/* Elevation: cards feel like physical sheets above the page */
+:root:not(.dark) .card {
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.07),
+    0 1px 2px -1px rgb(0 0 0 / 0.05);
+}
+
+/* Inputs: slight inset so the field looks recessed into the card */
+:root:not(.dark) .input {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.06);
+}
+:root:not(.dark) .input:focus {
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 0.18), inset 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* Secondary button: subtle lift so it reads as clickable */
+:root:not(.dark) .btn-secondary {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+}
+
+/* Header: floating shadow replaces the flat border separation */
+:root:not(.dark) header {
+  box-shadow: 0 1px 10px rgb(0 0 0 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.04);
+}
+
+/* ── Light mode: status & accent colour overrides ────────────────────────── */
+/*   Light-wash colours (emerald-400, red-400, etc.) that look great on dark  */
+/*   lack contrast on warm light backgrounds — swap to richer mid-range shades */
+
+/* Brand: brand-400 (#38bdf8 = very light sky) → brand-700 (#0369a1 = deep sky) */
+:root:not(.dark) .text-brand-400  { color: #0369a1; }
+/* Keep hover/interactive brand at brand-600 for a slightly lighter hover */
+:root:not(.dark) .hover\:text-brand-300:hover { color: #0284c7; }
+
+/* Green / success */
+:root:not(.dark) .text-emerald-400 { color: #059669; } /* emerald-600 */
+:root:not(.dark) .text-emerald-300 { color: #10b981; } /* emerald-500 */
+:root:not(.dark) .text-emerald-500 { color: #047857; } /* emerald-700 */
+:root:not(.dark) .hover\:text-emerald-300:hover { color: #10b981; }
+
+/* Red / danger */
+:root:not(.dark) .text-red-400 { color: #dc2626; } /* red-600 */
+:root:not(.dark) .text-red-300 { color: #ef4444; } /* red-500 */
+:root:not(.dark) .text-red-500 { color: #b91c1c; } /* red-700 */
+:root:not(.dark) .hover\:text-red-300:hover { color: #ef4444; }
+
+/* Yellow / warning */
+:root:not(.dark) .text-yellow-400 { color: #ca8a04; } /* yellow-600 */
+:root:not(.dark) .text-yellow-300 { color: #d97706; } /* amber-600 */
+
+/* Amber */
+:root:not(.dark) .text-amber-400 { color: #b45309; } /* amber-700 */
+
+/* Sky */
+:root:not(.dark) .text-sky-400 { color: #0284c7; } /* sky-600 */
+:root:not(.dark) .text-sky-300 { color: #0ea5e9; } /* sky-500 */
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────── */
-/* These also benefit from variable inversion automatically.                  */
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { @apply bg-slate-900; }
