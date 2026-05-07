@@ -212,6 +212,21 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
     sendMutation.mutate(text)
   }
 
+  function handleSummarise() {
+    if (isSending) return
+    sendMutation.mutate(
+      'Please summarise everything we have discussed so far into beautiful, well-structured revision notes. ' +
+      'Use this format:\n' +
+      '1. A short **Objective** sentence explaining what this topic is about.\n' +
+      '2. **Key Concepts** — a section with bolded terms and clear one-line explanations.\n' +
+      '3. **How It Works** — numbered steps or a structured walkthrough of the main ideas.\n' +
+      '4. **Code / Examples** — any relevant snippets or concrete examples (if applicable).\n' +
+      '5. **Common Pitfalls** — things to watch out for or mistakes beginners make.\n' +
+      '6. **Key Takeaways** — 3–5 bullet points a candidate should remember before an interview.\n\n' +
+      'Keep the language clear and concise. Make it genuinely useful for a quick review the night before an interview.'
+    )
+  }
+
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
@@ -344,6 +359,19 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
 
         {/* Input */}
         <div className="border-t border-slate-800 p-3 shrink-0">
+          {messages.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={handleSummarise}
+                disabled={isSending}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-brand-500/40 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Sparkles size={11} strokeWidth={2} />
+                Summarise conversation
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}
