@@ -1,19 +1,32 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { createRemoteJWKSet, jwtVerify } = require('jose');
+const jwksRsa = require('jwks-rsa');
 const { pool } = require('../db/database');
 const requireAuth = require('../middleware/auth');
 
 const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
 const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
-let jwks = null;
 
-function getJwks() {
-  if (!jwks && AUTH0_DOMAIN) {
-    jwks = createRemoteJWKSet(new URL(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`));
+let jwksClient = null;
+function getJwksClient() {
+  if (!jwksClient && AUTH0_DOMAIN) {
+    jwksClient = jwksRsa({
+      jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`,
+      cache: true,
+      rateLimit: true,
+    });
   }
-  return jwks;
+  return jwksClient;
+}
+
+function getSigningKey(header) {
+  return new Promise((resolve, reject) => {
+    getJwksClient().getSigningKey(header.kid, (err, key) => {
+      if (err) return reject(err);
+      resolve(key.getPublicKey());
+    });
+  });
 }
 
 const router = express.Router();
@@ -69,15 +82,19 @@ router.post('/oauth', async (req, res) => {
   }
 
   try {
-    const { payload } = await jwtVerify(id_token, getJwks(), {
-      issuer: `https://${AUTH0_DOMAIN}/`,
-      audience: AUTH0_CLIENT_ID,
+    const decoded = await new Promise((resolve, reject) => {
+      jwt.verify(
+        id_token,
+        (header, cb) => getSigningKey(header).then(k => cb(null, k)).catch(cb),
+        { issuer: `https://${AUTH0_DOMAIN}/`, audience: AUTH0_CLIENT_ID },
+        (err, payload) => err ? reject(err) : resolve(payload)
+      );
     });
 
-    const email = payload.email;
+    const email = decoded.email;
     if (!email) return res.status(400).json({ error: 'No email in token' });
 
-    const name = payload.name || payload.nickname || email.split('@')[0];
+    const name = decoded.name || decoded.nickname || email.split('@')[0];
 
     const { rows } = await pool.query(
       `INSERT INTO users (email, name, password_hash)
