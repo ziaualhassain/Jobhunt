@@ -730,6 +730,7 @@ export default function PrepTrackerPage() {
   const [showGenerate, setShowGenerate] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
   const [checkingIn, setCheckingIn] = useState(false)
+  const [mobileView, setMobileView] = useState<'list' | 'tasks'>('list')
 
   const { data: plans = [] } = useQuery({ queryKey: ['prep-plans'], queryFn: listPrepPlans })
   const { data: plan } = useQuery({
@@ -768,6 +769,7 @@ export default function PrepTrackerPage() {
     setActiveId(id)
     setShowGenerate(false)
     setShowUpload(false)
+    setMobileView('tasks')
   }
 
   const categories = useMemo(() => {
@@ -785,66 +787,71 @@ export default function PrepTrackerPage() {
   const completedTasks = plan?.tasks.filter(t => t.completed).length ?? 0
   const overallPct = pct(completedTasks, totalTasks)
 
-  return (
-    <div className="flex gap-4 h-[calc(100vh-7rem)]">
-
-      {/* ── Left sidebar: plan list ── */}
-      <div className="w-60 shrink-0 flex flex-col gap-2">
-        <div className="flex gap-1.5">
-          <button
-            onClick={() => setShowGenerate(true)}
-            className="btn-primary flex-1 flex items-center gap-1.5 justify-center text-xs py-2"
-          >
-            <Sparkles size={13} />AI Generate
-          </button>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 text-xs transition-colors"
-          >
-            <Upload size={13} />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
-          {plans.length === 0 && (
-            <div className="text-center text-slate-600 text-xs pt-10 px-2 space-y-2">
-              <Target size={28} className="mx-auto text-slate-700" />
-              <p>No plans yet. Generate one with AI or upload a file.</p>
-            </div>
-          )}
-          {(plans as PrepPlan[]).map(p => {
-            const prog = pct(p.completed_tasks ?? 0, p.total_tasks ?? 0)
-            const isActive = activeId === p.id
-            return (
-              <button
-                key={p.id}
-                onClick={() => setActiveId(p.id)}
-                className={`w-full text-left px-3 py-3 rounded-xl border transition-all duration-150 group ${
-                  isActive
-                    ? 'bg-brand-500/12 border-brand-500/40'
-                    : 'bg-slate-900 border-slate-800 hover:border-slate-700'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-1 mb-2">
-                  <p className={`text-xs font-semibold truncate flex-1 leading-snug ${isActive ? 'text-brand-200' : 'text-slate-300'}`}>
-                    {p.title}
-                  </p>
-                  <button
-                    onClick={e => { e.stopPropagation(); deleteMutation.mutate(p.id) }}
-                    className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 shrink-0 transition-all"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-                <ProgressBar value={prog} color={prog === 100 ? 'bg-emerald-500' : 'bg-brand-500'} height="h-1" />
-                <p className="text-[10px] text-slate-600 mt-1.5">
-                  {p.completed_tasks ?? 0}/{p.total_tasks ?? 0} tasks · {prog}%
-                </p>
-              </button>
-            )
-          })}
-        </div>
+  const planListPanel = (
+    <div className="flex flex-col gap-2 h-full">
+      <div className="flex gap-1.5 shrink-0">
+        <button
+          onClick={() => setShowGenerate(true)}
+          className="btn-primary flex-1 flex items-center gap-1.5 justify-center text-xs py-2"
+        >
+          <Sparkles size={13} />AI Generate
+        </button>
+        <button
+          onClick={() => setShowUpload(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-600 text-xs transition-colors"
+        >
+          <Upload size={13} />
+        </button>
       </div>
+
+      <div className="flex-1 overflow-y-auto space-y-1.5 pr-0.5">
+        {plans.length === 0 && (
+          <div className="text-center text-slate-600 text-xs pt-10 px-2 space-y-2">
+            <Target size={28} className="mx-auto text-slate-700" />
+            <p>No plans yet. Generate one with AI or upload a file.</p>
+          </div>
+        )}
+        {(plans as PrepPlan[]).map(p => {
+          const prog = pct(p.completed_tasks ?? 0, p.total_tasks ?? 0)
+          const isActive = activeId === p.id
+          return (
+            <button
+              key={p.id}
+              onClick={() => openPlan(p.id)}
+              className={`w-full text-left px-3 py-3 rounded-xl border transition-all duration-150 group ${
+                isActive
+                  ? 'bg-brand-500/12 border-brand-500/40'
+                  : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-1 mb-2">
+                <p className={`text-xs font-semibold truncate flex-1 leading-snug ${isActive ? 'text-brand-200' : 'text-slate-300'}`}>
+                  {p.title}
+                </p>
+                <button
+                  onClick={e => { e.stopPropagation(); deleteMutation.mutate(p.id) }}
+                  className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 shrink-0 transition-all"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+              <ProgressBar value={prog} color={prog === 100 ? 'bg-emerald-500' : 'bg-brand-500'} height="h-1" />
+              <p className="text-[10px] text-slate-600 mt-1.5">
+                {p.completed_tasks ?? 0}/{p.total_tasks ?? 0} tasks · {prog}%
+              </p>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="h-[calc(100vh-7rem)]">
+      {/* Desktop: three-column layout */}
+      <div className="hidden lg:flex gap-4 h-full">
+        {/* Left sidebar */}
+        <div className="w-60 shrink-0">{planListPanel}</div>
 
       {/* ── Centre: tasks ── */}
       <div className="flex-1 overflow-y-auto min-w-0">
@@ -975,25 +982,93 @@ export default function PrepTrackerPage() {
         )}
       </div>
 
-      {/* ── Right panel: calendar + streak ── */}
-      <div className="w-64 shrink-0 flex flex-col gap-3 overflow-y-auto">
-        {plan ? (
-          <>
-            <StreakWidget
-              streak={plan.streak}
-              checkins={plan.checkins}
-              todayCheckin={plan.todayCheckin}
-              onCheckin={handleCheckin}
-              checkingIn={checkingIn}
-            />
-            <MiniCalendar checkins={plan.checkins} />
-          </>
-        ) : (
-          <div className="card p-5 text-center text-slate-700 text-xs space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-800 flex items-center justify-center mx-auto">
-              <Flame size={18} className="text-slate-700" />
+        {/* Right panel: streak + calendar */}
+        <div className="w-64 shrink-0 flex flex-col gap-3 overflow-y-auto">
+          {plan ? (
+            <>
+              <StreakWidget
+                streak={plan.streak}
+                checkins={plan.checkins}
+                todayCheckin={plan.todayCheckin}
+                onCheckin={handleCheckin}
+                checkingIn={checkingIn}
+              />
+              <MiniCalendar checkins={plan.checkins} />
+            </>
+          ) : (
+            <div className="card p-5 text-center text-slate-700 text-xs space-y-2">
+              <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-800 flex items-center justify-center mx-auto">
+                <Flame size={18} className="text-slate-700" />
+              </div>
+              <p>Select a plan to see your streak and check-in calendar</p>
             </div>
-            <p>Select a plan to see your streak and check-in calendar</p>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile: single-panel toggle */}
+      <div className="flex lg:hidden flex-col h-full overflow-hidden">
+        {mobileView === 'list' ? (
+          <div className="flex-1 overflow-hidden">{planListPanel}</div>
+        ) : (
+          <div className="flex-1 overflow-y-auto space-y-4 pb-4">
+            {/* Back button */}
+            <button
+              onClick={() => setMobileView('list')}
+              className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <ChevronLeft size={16} />Plans
+            </button>
+
+            {/* Streak inline on mobile */}
+            {plan && (
+              <StreakWidget
+                streak={plan.streak}
+                checkins={plan.checkins}
+                todayCheckin={plan.todayCheckin}
+                onCheckin={handleCheckin}
+                checkingIn={checkingIn}
+              />
+            )}
+
+            {!activeId ? (
+              <div className="card p-8 text-center space-y-4">
+                <TrendingUp size={28} className="mx-auto text-slate-700" />
+                <p className="text-slate-400 text-sm">Select a plan to view tasks</p>
+              </div>
+            ) : !plan ? (
+              <div className="flex items-center justify-center h-32">
+                <Loader2 size={20} className="animate-spin text-slate-500" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Plan header */}
+                <div className="card p-4">
+                  <h2 className="text-base font-bold text-slate-100">{plan.title}</h2>
+                  {plan.goal && <p className="text-xs text-slate-400 mt-1">{plan.goal}</p>}
+                  <div className="mt-3">
+                    <ProgressBar value={overallPct} color={overallPct === 100 ? 'bg-emerald-500' : 'bg-brand-500'} height="h-1.5" />
+                    <p className="text-[10px] text-slate-500 mt-1">{completedTasks}/{totalTasks} tasks · {overallPct}%</p>
+                  </div>
+                </div>
+
+                {categories.length === 0 ? (
+                  <div className="card p-8 text-center text-slate-600 text-sm">No tasks found.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {categories.map(([name, tasks], i) => (
+                      <CategorySection
+                        key={name}
+                        name={name}
+                        tasks={tasks}
+                        colorIdx={i}
+                        onToggle={(taskId, done) => toggleMutation.mutate({ taskId, completed: done })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

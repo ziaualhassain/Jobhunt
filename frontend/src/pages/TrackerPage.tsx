@@ -149,59 +149,65 @@ export default function TrackerPage() {
           </p>
         </div>
       ) : (
-        <div className="overflow-x-auto pb-4">
-          <div className="flex gap-3 min-w-max">
-            {COLUMNS.map(col => {
-              const cfg = STATUS_CONFIG[col]
-              const colApps = byStatus[col]
-              const isOver = dragOverCol === col
+        <>
+          {/* Mobile scroll hint */}
+          <p className="text-[11px] text-slate-600 flex items-center gap-1.5 sm:hidden">
+            <span>←</span> Swipe to see all columns <span>→</span>
+          </p>
+          <div className="overflow-x-auto pb-4 -mx-4 px-4">
+            <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
+              {COLUMNS.map(col => {
+                const cfg = STATUS_CONFIG[col]
+                const colApps = byStatus[col]
+                const isOver = dragOverCol === col
 
-              return (
-                <div
-                  key={col}
-                  className="w-64 shrink-0"
-                  onDragOver={e => handleDragOver(e, col)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={() => handleDrop(col)}
-                >
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.color}`}>
-                      {cfg.label}
-                    </span>
-                    <span className={`badge ${cfg.bg} ${cfg.color} border ${cfg.border}`}>
-                      {colApps.length}
-                    </span>
-                  </div>
+                return (
                   <div
-                    className={`rounded-xl p-2 space-y-2 min-h-[200px] border transition-colors ${
-                      isOver
-                        ? `${cfg.border} bg-slate-800/60 ring-1 ring-inset ${cfg.border}`
-                        : `${cfg.border} bg-slate-900/40`
-                    }`}
+                    key={col}
+                    className="w-56 sm:w-64 shrink-0"
+                    onDragOver={e => handleDragOver(e, col)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={() => handleDrop(col)}
                   >
-                    {colApps.length === 0 && (
-                      <p className={`text-center text-xs py-8 transition-colors ${isOver ? cfg.color + ' opacity-50' : 'text-slate-700'}`}>
-                        {isOver ? `Move here` : 'Empty'}
-                      </p>
-                    )}
-                    {colApps.map(app => (
-                      <ApplicationCard
-                        key={app.id}
-                        app={app}
-                        onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
-                        onNotesChange={(id, notes) => updateMutation.mutate({ id, data: { notes } })}
-                        onDelete={id => deleteMutation.mutate(id)}
-                        onDragStart={handleDragStart}
-                        onDragEnd={handleDragEnd}
-                        isDragging={draggingId === app.id}
-                      />
-                    ))}
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <span className={`text-xs font-semibold uppercase tracking-wide ${cfg.color}`}>
+                        {cfg.label}
+                      </span>
+                      <span className={`badge ${cfg.bg} ${cfg.color} border ${cfg.border}`}>
+                        {colApps.length}
+                      </span>
+                    </div>
+                    <div
+                      className={`rounded-xl p-2 space-y-2 min-h-[200px] border transition-colors ${
+                        isOver
+                          ? `${cfg.border} bg-slate-800/60 ring-1 ring-inset ${cfg.border}`
+                          : `${cfg.border} bg-slate-900/40`
+                      }`}
+                    >
+                      {colApps.length === 0 && (
+                        <p className={`text-center text-xs py-8 transition-colors ${isOver ? cfg.color + ' opacity-50' : 'text-slate-700'}`}>
+                          {isOver ? `Move here` : 'Empty'}
+                        </p>
+                      )}
+                      {colApps.map(app => (
+                        <ApplicationCard
+                          key={app.id}
+                          app={app}
+                          onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
+                          onNotesChange={(id, notes) => updateMutation.mutate({ id, data: { notes } })}
+                          onDelete={id => deleteMutation.mutate(id)}
+                          onDragStart={handleDragStart}
+                          onDragEnd={handleDragEnd}
+                          isDragging={draggingId === app.id}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {showAddModal && (
