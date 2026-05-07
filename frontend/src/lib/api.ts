@@ -216,6 +216,15 @@ export async function rewriteResume(
   return res.data
 }
 
+export async function extractResumeStructured(file: File): Promise<GeneratedResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  const res = await api.post('/resume/extract', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
 // Downloads a text-based ATS-friendly PDF generated server-side via pdfkit
 export async function downloadResumePdf(resume: GeneratedResume, template = 'jake'): Promise<Blob> {
   const res = await api.post(`/resume/pdf?template=${template}`, resume, { responseType: 'blob' })

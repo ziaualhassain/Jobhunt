@@ -67,31 +67,24 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card p-5 space-y-4">
-      <div className="flex gap-3">
+    <form onSubmit={handleSubmit} className="card p-4 space-y-3">
+      {/* Keyword row */}
+      <div className="flex gap-2">
         <div className="relative flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             className="input pl-9"
-            placeholder="e.g. React developer, Java backend, Python data engineer…"
+            placeholder="e.g. React developer, Python data engineer…"
             value={keywordInput}
             onChange={e => setKeywordInput(e.target.value)}
           />
         </div>
-        <div className="relative w-44 shrink-0">
-          <input
-            type="text"
-            className="input pl-3 w-full"
-            placeholder="Location (e.g. Hyderabad)"
-            value={location}
-            onChange={e => setLocation(e.target.value)}
-          />
-        </div>
+        {/* Filter & clear buttons always visible alongside keyword on mobile */}
         <button
           type="button"
           onClick={() => setShowFilters(v => !v)}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition-colors ${
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm transition-colors shrink-0 ${
             showFilters || selectedTags.length > 0
               ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
               : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
@@ -103,19 +96,31 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
             <span className="text-xs font-medium">{selectedTags.length}</span>
           )}
         </button>
+      </div>
+
+      {/* Location + action buttons row */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          className="input flex-1 sm:max-w-[180px]"
+          placeholder="Location (e.g. Hyderabad)"
+          value={location}
+          onChange={e => setLocation(e.target.value)}
+        />
         {hasActiveFilters && (
           <button
             type="button"
             onClick={handleClear}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-500 text-sm transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-500 text-sm transition-colors shrink-0"
           >
             <X size={14} />
-            Clear
+            <span className="hidden sm:inline">Clear</span>
           </button>
         )}
-        <button type="submit" className="btn-primary flex items-center gap-2 whitespace-nowrap" disabled={loading}>
+        <button type="submit" className="btn-primary flex items-center gap-2 shrink-0" disabled={loading}>
           <Search size={15} />
-          {loading ? 'Searching…' : 'Search Jobs'}
+          <span className="hidden sm:inline">{loading ? 'Searching…' : 'Search'}</span>
+          <span className="sm:hidden">{loading ? '…' : 'Go'}</span>
         </button>
       </div>
 
