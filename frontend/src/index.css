@@ -24,18 +24,19 @@
 }
 
 :root:not(.dark) {
-  /* Light mode — inverted slate scale */
-  --sl-50:   2   6  23;
-  --sl-100:  15  23  42;
-  --sl-200:  30  41  59;
-  --sl-300:  51  65  85;
-  --sl-400:  71  85 105;
-  --sl-500: 100 116 139;  /* midpoint stays the same */
-  --sl-600: 148 163 184;
-  --sl-700: 203 213 225;
-  --sl-800: 226 232 240;
-  --sl-900: 255 255 255;  /* pure white cards (nicer than #f1f5f9) */
-  --sl-950: 248 250 252;  /* very-light page bg */
+  /* Light mode — warm neutral stone palette, not cold blue-white */
+  --sl-50:  12  10   9;   /* stone-950 — darkest text                  */
+  --sl-100: 28  25  23;   /* stone-900 — primary headings               */
+  --sl-200: 41  37  36;   /* stone-800 — dark text                      */
+  --sl-300: 68  64  60;   /* stone-700 — body text                      */
+  --sl-400: 87  83  78;   /* stone-600 — secondary text                 */
+  --sl-500: 118 112 107;  /* stone-500 — muted / placeholder            */
+  --sl-600: 161 157 153;  /* warm mid-gray — subtle labels              */
+  --sl-700: 214 212 208;  /* warm light — borders                       */
+  --sl-800: 237 235 232;  /* warm surface — input bg, hover states      */
+  --sl-900: 250 249 247;  /* warm near-white — card bg                  */
+  --sl-950: 245 244 241;  /* warm off-white — page bg (slightly deeper  */
+                          /*   than card so cards appear elevated)       */
 }
 
 /* ── Base ────────────────────────────────────────────────────────────────── */
@@ -43,7 +44,7 @@
 @layer base {
   body {
     /* dark:  bg-slate-950 = #020617, text-slate-100 = #f1f5f9  */
-    /* light: bg-slate-950 = #f8fafc, text-slate-100 = #0f172a  */
+    /* light: bg-slate-950 = #f5f4f1, text-slate-100 = #1c1917  */
     @apply bg-slate-950 text-slate-100 antialiased;
   }
 }
