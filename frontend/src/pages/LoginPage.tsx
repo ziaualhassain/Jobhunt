@@ -33,7 +33,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2 mb-8">
           <Cloud size={28} className="text-brand-400" />
-          <span className="text-2xl font-bold text-brand-400">JobHunt</span>
+          <span className="text-2xl font-bold text-brand-400">JobHunters</span>
         </div>
 
         <div className="card p-6 space-y-4">

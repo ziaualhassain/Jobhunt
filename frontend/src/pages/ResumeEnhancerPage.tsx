@@ -893,6 +893,7 @@ function ResumePreview({ resume, label = 'Rewritten Resume' }: { resume: Generat
 export default function ResumeEnhancerPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<'analyze' | 'create'>('analyze')
+  const [draggingOver, setDraggingOver] = useState(false)
 
   // Analyze tab state
   const [file, setFile] = useState<File | null>(null)
@@ -981,24 +982,41 @@ export default function ResumeEnhancerPage() {
           <form onSubmit={handleSubmit} className="card p-5 space-y-4">
             <div
               onClick={() => fileRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center gap-2 cursor-pointer transition-colors ${
-                file ? 'border-brand-500/50 bg-brand-500/5' : 'border-slate-700 hover:border-slate-500'
+              onDragOver={e => { e.preventDefault(); setDraggingOver(true) }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDraggingOver(false) }}
+              onDrop={e => {
+                e.preventDefault()
+                setDraggingOver(false)
+                const dropped = e.dataTransfer.files?.[0]
+                if (dropped) setFile(dropped)
+              }}
+              className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center gap-2 cursor-pointer transition-all select-none ${
+                draggingOver
+                  ? 'border-brand-400 bg-brand-500/10 scale-[1.01]'
+                  : file
+                  ? 'border-brand-500/50 bg-brand-500/5'
+                  : 'border-slate-700 hover:border-slate-500'
               }`}
             >
               <input
                 ref={fileRef} type="file" accept=".pdf,.doc,.docx,.txt" className="hidden"
                 onChange={e => setFile(e.target.files?.[0] ?? null)}
               />
-              {file ? (
+              {draggingOver ? (
+                <>
+                  <Upload size={28} className="text-brand-400 animate-bounce" />
+                  <p className="text-sm font-medium text-brand-300">Drop your resume here</p>
+                </>
+              ) : file ? (
                 <>
                   <FileText size={28} className="text-brand-400" />
                   <p className="text-sm font-medium text-brand-300">{file.name}</p>
-                  <p className="text-xs text-slate-500">Click to change file</p>
+                  <p className="text-xs text-slate-500">Click or drag to change file</p>
                 </>
               ) : (
                 <>
                   <Upload size={28} className="text-slate-500" />
-                  <p className="text-sm font-medium text-slate-300">Click to upload your resume</p>
+                  <p className="text-sm font-medium text-slate-300">Drag & drop or click to upload</p>
                   <p className="text-xs text-slate-500">PDF, DOCX, or TXT · max 10 MB</p>
                 </>
               )}

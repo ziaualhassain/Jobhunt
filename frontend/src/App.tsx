@@ -38,7 +38,7 @@ export default function App() {
             {/* Logo */}
             <div className="flex items-center gap-2 font-bold text-lg text-brand-400 shrink-0">
               <Cloud size={22} />
-              <span className="hidden xs:inline">JobHunt</span>
+              <span className="hidden xs:inline">JobHunters</span>
             </div>
 
             {/* Desktop nav */}
