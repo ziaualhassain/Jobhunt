@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Loader2, AlertCircle, Layers, SortAsc } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog } from 'lucide-react'
 import SearchForm from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
@@ -9,9 +10,46 @@ import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
 
 type SortKey = 'default' | 'title' | 'company' | 'source'
+type Tab = 'curated' | 'browse'
+
+function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string>; onSave: (j: Job) => void }) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      {jobs.map(job => (
+        <JobCard
+          key={job.job_id}
+          job={job}
+          isSaved={savedIds.has(job.job_id)}
+          onSave={onSave}
+        />
+      ))}
+    </div>
+  )
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="card p-4 animate-pulse">
+          <div className="flex gap-3">
+            <div className="w-10 h-10 rounded-lg bg-slate-800" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 bg-slate-800 rounded w-2/3" />
+              <div className="h-3 bg-slate-800 rounded w-1/3" />
+              <div className="h-3 bg-slate-800 rounded w-full" />
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export default function JobsPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const [activeTab, setActiveTab] = useState<Tab>('curated')
   const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
   const [sort, setSort] = useState<SortKey>('default')
   const [toast, setToast] = useState<string | null>(null)
@@ -19,13 +57,32 @@ export default function JobsPage() {
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
   const restoredRef = useRef(false)
 
-  // Load user preferences to populate default search
-  const { data: profile } = useQuery({
-    queryKey: ['profile'],
-    queryFn: getProfile,
+  const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
+  const { data: applications } = useQuery({ queryKey: ['applications'], queryFn: () => getApplications() })
+
+  const savedIds = new Set((applications ?? []).map(a => a.job_id))
+
+  // ── Curated: built from profile preferences ─────────────────────────────────
+  const profileInterests = profile?.preferences?.interests ?? []
+  const profileKeywords = profile?.preferences?.keywords ?? []
+  const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
+
+  const curatedFilters: Partial<SearchFilters> = {
+    tags: profileInterests,
+    keywords: profileKeywords,
+    experienceLevel: profile?.preferences?.experienceLevel ?? '',
+    jobType: profile?.preferences?.jobType ?? '',
+    location: profile?.preferences?.location ?? '',
+    remote: profile?.preferences?.remote ?? true,
+  }
+
+  const { data: curatedData, isLoading: curatedLoading } = useQuery({
+    queryKey: ['jobs', 'curated', curatedFilters],
+    queryFn: () => searchJobs(curatedFilters),
+    enabled: !!profile && hasProfileData,
   })
 
-  // Restore last search from DB once profile loads
+  // ── Browse: user-controlled search ─────────────────────────────────────────
   useEffect(() => {
     if (!restoredRef.current && profile?.preferences?.lastSearch) {
       restoredRef.current = true
@@ -34,25 +91,18 @@ export default function JobsPage() {
     }
   }, [profile])
 
-  const defaultFilters: Partial<SearchFilters> = filters ?? {
-    tags: profile?.preferences?.interests ?? [],
-    keywords: profile?.preferences?.keywords ?? [],
+  const browseFilters: Partial<SearchFilters> = filters ?? {
+    tags: profileInterests,
+    keywords: profileKeywords,
     experienceLevel: profile?.preferences?.experienceLevel ?? '',
     remote: profile?.preferences?.remote ?? true,
   }
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['jobs', defaultFilters],
-    queryFn: () => searchJobs(defaultFilters),
-    enabled: true,
+  const { data: browseData, isLoading: browseLoading, isError, error } = useQuery({
+    queryKey: ['jobs', browseFilters],
+    queryFn: () => searchJobs(browseFilters),
+    enabled: activeTab === 'browse',
   })
-
-  const { data: applications } = useQuery({
-    queryKey: ['applications'],
-    queryFn: () => getApplications(),
-  })
-
-  const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
   const saveMutation = useMutation({
     mutationFn: (job: Job) => saveApplication(job),
@@ -81,13 +131,12 @@ export default function JobsPage() {
   function handleClear() {
     setFilters(null)
     setResumeFilters(null)
-    // intentionally not saving to DB — clear is a temporary session action
   }
 
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
     const f: Partial<SearchFilters> = {
       keywords: analysis.searchKeywords,
-      tags: [],  // don't auto-apply tags — skills like "C", "Figma" make the tag filter too restrictive
+      tags: [],
       experienceLevel: analysis.experienceLevel,
       remote: true,
     }
@@ -97,10 +146,20 @@ export default function JobsPage() {
     showToast(`Searching ${analysis.searchKeywords.length} keywords from your resume`)
   }
 
-  const jobs = [...(data?.jobs ?? [])]
-  if (sort === 'title') jobs.sort((a, b) => a.title.localeCompare(b.title))
-  else if (sort === 'company') jobs.sort((a, b) => a.company.localeCompare(b.company))
-  else if (sort === 'source') jobs.sort((a, b) => a.source.localeCompare(b.source))
+  const browseJobs = [...(browseData?.jobs ?? [])]
+  if (sort === 'title') browseJobs.sort((a, b) => a.title.localeCompare(b.title))
+  else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
+  else if (sort === 'source') browseJobs.sort((a, b) => a.source.localeCompare(b.source))
+
+  const curatedJobs = curatedData?.jobs ?? []
+
+  // Chips showing which profile attributes are active in the curated feed
+  const matchChips: string[] = [
+    ...profileInterests.slice(0, 5),
+    ...(profile?.preferences?.experienceLevel ? [profile.preferences.experienceLevel] : []),
+    ...(profile?.preferences?.location ? [profile.preferences.location] : []),
+    ...(profile?.preferences?.remote ? ['Remote'] : []),
+  ]
 
   return (
     <div className="space-y-4">
@@ -109,102 +168,175 @@ export default function JobsPage() {
         <p className="text-slate-500 text-sm mt-1">Remote tech jobs aggregated from RemoteOK, We Work Remotely, Himalayas &amp; more</p>
       </div>
 
-      <ResumeUpload onAnalyzed={handleResumeAnalyzed} />
+      {/* ── Tab switcher ────────────────────────────────────────────────────── */}
+      <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl w-fit">
+        <button
+          onClick={() => setActiveTab('curated')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+            activeTab === 'curated'
+              ? 'bg-brand-500/20 text-brand-300 shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          <Sparkles size={14} />
+          For You
+        </button>
+        <button
+          onClick={() => setActiveTab('browse')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${
+            activeTab === 'browse'
+              ? 'bg-slate-800 text-slate-200 shadow-sm'
+              : 'text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          <Search size={14} />
+          Browse All
+        </button>
+      </div>
 
-      {resumeFilters && (
-        <div className="flex items-center gap-2 text-xs bg-brand-900/20 border border-brand-800 text-brand-300 rounded-lg px-3 py-2">
-          <span className="font-medium">Showing resume-matched results</span>
-          <span className="text-brand-500">·</span>
-          <span>{filters?.keywords?.slice(0, 4).join(', ')}{(filters?.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
-          <button
-            onClick={() => { setResumeFilters(null); setFilters(null); setSearchKey(k => k + 1) }}
-            className="ml-auto text-brand-500 hover:text-brand-300 underline"
-          >
-            Clear
-          </button>
-        </div>
-      )}
-
-      <SearchForm
-        key={searchKey}
-        onSearch={handleSearch}
-        onClear={handleClear}
-        loading={isLoading}
-        initialFilters={resumeFilters ?? (filters ?? defaultFilters)}
-      />
-
-      {(data || isLoading) && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            {isLoading ? (
-              <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Fetching jobs…</span>
-            ) : (
-              <span><span className="text-slate-200 font-medium">{data?.total ?? 0}</span> jobs found</span>
-            )}
-          </p>
-          <div className="flex items-center gap-1.5">
-            <SortAsc size={13} className="text-slate-500" />
-            <select
-              className="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              value={sort}
-              onChange={e => setSort(e.target.value as SortKey)}
-            >
-              <option value="default">Sort: Default</option>
-              <option value="title">Sort: Title</option>
-              <option value="company">Sort: Company</option>
-              <option value="source">Sort: Source</option>
-            </select>
-          </div>
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="card p-4 animate-pulse">
-              <div className="flex gap-3">
-                <div className="w-10 h-10 rounded-lg bg-slate-800" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-slate-800 rounded w-2/3" />
-                  <div className="h-3 bg-slate-800 rounded w-1/3" />
-                  <div className="h-3 bg-slate-800 rounded w-full" />
+      {/* ══════════════════ FOR YOU TAB ══════════════════ */}
+      {activeTab === 'curated' && (
+        <div className="space-y-4">
+          {!profile ? (
+            <SkeletonGrid />
+          ) : !hasProfileData ? (
+            /* No profile preferences set */
+            <div className="card p-8 text-center space-y-3">
+              <UserCog size={36} className="mx-auto text-slate-600" />
+              <div>
+                <p className="font-semibold text-slate-300">Your feed is empty</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Add your skills and preferences in your Profile to get curated job recommendations.
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/profile')}
+                className="inline-flex items-center gap-2 btn-primary text-sm px-4 py-2"
+              >
+                <UserCog size={13} />
+                Set up your profile
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Match context banner */}
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-brand-500/10 border border-brand-500/20 rounded-xl">
+                <Sparkles size={13} className="text-brand-400 shrink-0" />
+                <span className="text-xs text-brand-300 font-medium">Matched to your profile:</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {matchChips.map(chip => (
+                    <span key={chip} className="badge bg-brand-500/15 text-brand-300 border border-brand-500/30 text-[11px]">
+                      {chip}
+                    </span>
+                  ))}
+                  {profileKeywords.length > 0 && (
+                    <span className="badge bg-slate-800 text-slate-400 border-slate-700 text-[11px]">
+                      +{profileKeywords.length} keywords
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {curatedLoading && <SkeletonGrid />}
+
+              {!curatedLoading && curatedJobs.length === 0 && (
+                <div className="card p-10 text-center">
+                  <Layers size={32} className="mx-auto text-slate-700 mb-3" />
+                  <p className="text-slate-400 font-medium">No curated matches right now</p>
+                  <p className="text-slate-600 text-sm mt-1">Try adding more skills in your profile or use Browse to search manually</p>
+                </div>
+              )}
+
+              {!curatedLoading && curatedJobs.length > 0 && (
+                <>
+                  <p className="text-sm text-slate-500">
+                    <span className="text-slate-200 font-medium">{curatedData?.total ?? curatedJobs.length}</span> jobs curated for you
+                  </p>
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ══════════════════ BROWSE TAB ══════════════════ */}
+      {activeTab === 'browse' && (
+        <div className="space-y-4">
+          <ResumeUpload onAnalyzed={handleResumeAnalyzed} />
+
+          {resumeFilters && (
+            <div className="flex items-center gap-2 text-xs bg-brand-900/20 border border-brand-800 text-brand-300 rounded-lg px-3 py-2">
+              <span className="font-medium">Showing resume-matched results</span>
+              <span className="text-brand-500">·</span>
+              <span>{filters?.keywords?.slice(0, 4).join(', ')}{(filters?.keywords?.length ?? 0) > 4 ? '…' : ''}</span>
+              <button
+                onClick={() => { setResumeFilters(null); setFilters(null); setSearchKey(k => k + 1) }}
+                className="ml-auto text-brand-500 hover:text-brand-300 underline"
+              >
+                Clear
+              </button>
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {isError && (
-        <div className="card p-5 flex items-center gap-3 text-red-400 border-red-900">
-          <AlertCircle size={18} />
-          <div>
-            <p className="font-medium">Failed to load jobs</p>
-            <p className="text-xs text-red-500 mt-0.5">
-              {(error as Error)?.message ?? 'Make sure the backend is running'}
-            </p>
-          </div>
-        </div>
-      )}
+          <SearchForm
+            key={searchKey}
+            onSearch={handleSearch}
+            onClear={handleClear}
+            loading={browseLoading}
+            initialFilters={resumeFilters ?? (filters ?? browseFilters)}
+          />
 
-      {!isLoading && !isError && jobs.length === 0 && data && (
-        <div className="card p-10 text-center">
-          <Layers size={32} className="mx-auto text-slate-700 mb-3" />
-          <p className="text-slate-400 font-medium">No jobs found</p>
-          <p className="text-slate-600 text-sm mt-1">Try different keywords or remove some filters</p>
-        </div>
-      )}
+          {(browseData || browseLoading) && (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500">
+                {browseLoading ? (
+                  <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Fetching jobs…</span>
+                ) : (
+                  <span><span className="text-slate-200 font-medium">{browseData?.total ?? 0}</span> jobs found</span>
+                )}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <SortAsc size={13} className="text-slate-500" />
+                <select
+                  className="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  value={sort}
+                  onChange={e => setSort(e.target.value as SortKey)}
+                >
+                  <option value="default">Sort: Default</option>
+                  <option value="title">Sort: Title</option>
+                  <option value="company">Sort: Company</option>
+                  <option value="source">Sort: Source</option>
+                </select>
+              </div>
+            </div>
+          )}
 
-      {!isLoading && jobs.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {jobs.map(job => (
-            <JobCard
-              key={job.job_id}
-              job={job}
-              isSaved={savedIds.has(job.job_id)}
-              onSave={j => saveMutation.mutate(j)}
-            />
-          ))}
+          {browseLoading && <SkeletonGrid />}
+
+          {isError && (
+            <div className="card p-5 flex items-center gap-3 text-red-400 border-red-900">
+              <AlertCircle size={18} />
+              <div>
+                <p className="font-medium">Failed to load jobs</p>
+                <p className="text-xs text-red-500 mt-0.5">
+                  {(error as Error)?.message ?? 'Make sure the backend is running'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!browseLoading && !isError && browseJobs.length === 0 && browseData && (
+            <div className="card p-10 text-center">
+              <Layers size={32} className="mx-auto text-slate-700 mb-3" />
+              <p className="text-slate-400 font-medium">No jobs found</p>
+              <p className="text-slate-600 text-sm mt-1">Try different keywords or remove some filters</p>
+            </div>
+          )}
+
+          {!browseLoading && browseJobs.length > 0 && (
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+          )}
         </div>
       )}
 
