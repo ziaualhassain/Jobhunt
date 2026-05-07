@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, Navigate, Link } from 'react-router-dom'
-import { Kanban, Cloud, FileSearch2, MessageSquare, TrendingUp, Menu, X, UserCircle2 } from 'lucide-react'
+import { Briefcase, Kanban, Cloud, FileSearch2, MessageSquare, TrendingUp, Menu, X, UserCircle2 } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'
@@ -20,6 +20,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_LINKS = [
+  { to: '/',                end: true,  icon: Briefcase,     label: 'Job Listings'    },
   { to: '/tracker',         end: false, icon: Kanban,        label: 'Tracker'         },
   { to: '/resume-enhancer', end: false, icon: FileSearch2,   label: 'Resume Enhancer' },
   { to: '/interview-coach', end: false, icon: MessageSquare, label: 'Interview Coach' },
@@ -55,7 +56,7 @@ export default function App() {
             </Link>
 
             {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-0.5 ml-3">
+            <nav className="hidden md:flex items-center gap-1 ml-3">
               {NAV_LINKS.map(({ to, end, icon: Icon, label }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => navCls(isActive)}>
                   <Icon size={15} strokeWidth={1.75} />

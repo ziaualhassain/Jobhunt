@@ -339,6 +339,11 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* ── Footer ──────────────────────────────────────────────────────── */}
+      <p className="text-center text-xs text-slate-600 pb-2">
+        Made with <span className="text-red-400">♥</span> by Team Insighters &copy; 2026
+      </p>
+
     </div>
   )
 }
