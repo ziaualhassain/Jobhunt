@@ -4,7 +4,7 @@ import {
   Target, Trash2, CheckCircle2, Circle, ChevronDown, ChevronUp,
   Loader2, Upload, Flame, Clock, Sparkles, X,
   TrendingUp, AlertCircle, ExternalLink, BookOpen, ChevronLeft, ChevronRight,
-  Link2, MessageCircle, Send, Bot, User,
+  MessageCircle, Send, Bot, User,
 } from 'lucide-react'
 import {
   listPrepPlans, getPrepPlan, generatePrepPlan, uploadPrepPlan,
@@ -63,7 +63,47 @@ function ProgressBar({ value, color = 'bg-brand-500', height = 'h-1.5' }: {
 
 // ─── ResourceLinks ────────────────────────────────────────────────────────────
 // Split by comma/semicolon/newline to get individual resource items.
-// Each item: if it's a URL → direct link; otherwise → Google search link.
+// Each item: if it's a URL → direct link; if it matches a known platform → direct link; otherwise → Google search.
+
+const KNOWN_RESOURCE_URLS: Record<string, string> = {
+  'leetcode': 'https://leetcode.com',
+  'hackerrank': 'https://www.hackerrank.com',
+  'neetcode': 'https://neetcode.io',
+  'neetcode.io': 'https://neetcode.io',
+  'codeforces': 'https://codeforces.com',
+  'codechef': 'https://www.codechef.com',
+  'geeksforgeeks': 'https://www.geeksforgeeks.org',
+  'gfg': 'https://www.geeksforgeeks.org',
+  'system design primer': 'https://github.com/donnemartin/system-design-primer',
+  'system design interview': 'https://github.com/donnemartin/system-design-primer',
+  'cracking the coding interview': 'https://www.crackingthecodinginterview.com',
+  'ctci': 'https://www.crackingthecodinginterview.com',
+  'blind 75': 'https://neetcode.io/practice',
+  'grind 75': 'https://www.techinterviewhandbook.org/grind75',
+  'tech interview handbook': 'https://www.techinterviewhandbook.org',
+  'interviewing.io': 'https://interviewing.io',
+  'pramp': 'https://www.pramp.com',
+  'educative': 'https://www.educative.io',
+  'udemy': 'https://www.udemy.com',
+  'coursera': 'https://www.coursera.org',
+  'youtube': 'https://www.youtube.com',
+  'github': 'https://github.com',
+  'stackoverflow': 'https://stackoverflow.com',
+  'stack overflow': 'https://stackoverflow.com',
+  'mdn': 'https://developer.mozilla.org',
+  'mdn web docs': 'https://developer.mozilla.org',
+  'aws docs': 'https://docs.aws.amazon.com',
+  'docker docs': 'https://docs.docker.com',
+  'kubernetes docs': 'https://kubernetes.io/docs',
+  'react docs': 'https://react.dev',
+  'node.js docs': 'https://nodejs.org/en/docs',
+}
+
+function resolveResourceUrl(item: string): string {
+  if (isUrl(item)) return item
+  const key = item.toLowerCase().trim()
+  return KNOWN_RESOURCE_URLS[key] ?? `https://www.google.com/search?q=${encodeURIComponent(item)}`
+}
 
 function splitResourceItems(text: string): string[] {
   return text.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean)
@@ -76,12 +116,9 @@ function ResourceLinks({ text }: { text: string }) {
   return (
     <div className="flex flex-wrap gap-1.5 mt-2">
       {items.map((item, i) => {
-        const url = isUrl(item)
-          ? item
-          : `https://www.google.com/search?q=${encodeURIComponent(item)}`
+        const url = resolveResourceUrl(item)
         const label = isUrl(item) ? hostname(item) : item
-        const icon = isUrl(item) ? ExternalLink : Link2
-        const Icon = icon
+        const Icon = ExternalLink
         return (
           <a
             key={i}

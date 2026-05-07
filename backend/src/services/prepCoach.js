@@ -7,7 +7,10 @@ const mammoth = require('mammoth');
 
 const PLAN_SYSTEM = `You are an expert interview preparation coach.
 Generate a structured, realistic study plan as a JSON object.
-Include only actionable tasks grouped by category. Be specific and practical.`;
+Include only actionable tasks grouped by category. Be specific and practical.
+For the resources field of every task, always provide real, working direct URLs (https://...).
+Examples of valid resources: "https://leetcode.com/problems/two-sum/, https://neetcode.io"
+Never use plain names like "LeetCode" — always the full URL.`;
 
 const PLAN_JSON_TEMPLATE = `Return ONLY a JSON object:
 {
@@ -22,7 +25,7 @@ const PLAN_JSON_TEMPLATE = `Return ONLY a JSON object:
           "title": "<task title>",
           "description": "<specific what to do>",
           "estimated_hours": <number>,
-          "resources": "<book/link/platform hint>",
+          "resources": "<comma-separated direct URLs, e.g. https://leetcode.com, https://docs.example.com>",
           "priority": "<high|medium|low>"
         }
       ]
@@ -205,7 +208,9 @@ async function parseUpload(buffer, mimetype, originalname) {
 const STRUCTURE_SYSTEM = `You are an expert interview preparation coach.
 Convert the provided preparation advice or study plan text into a structured JSON plan.
 Extract all topics, tasks, and activities. Group them into logical categories.
-Be practical — if a week-by-week schedule is given, map each week to a category.`;
+Be practical — if a week-by-week schedule is given, map each week to a category.
+For the resources field of every task, always provide real direct URLs (https://...).
+Never use plain names — always the full URL to the actual resource page.`;
 
 async function structureFromMessageOllama(content, role, company) {
   const model = process.env.OLLAMA_MODEL || 'llama3.2';
