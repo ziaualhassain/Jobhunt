@@ -150,6 +150,10 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS preferences JSONB DEFAULT '{}'::jsonb;
   `);
+  // Allow NULL password_hash for OAuth users (Auth0 social login)
+  await pool.query(`
+    ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
+  `);
   console.log('[DB] Schema ready');
 }
 

@@ -1,8 +1,20 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { createRemoteJWKSet, jwtVerify } = require('jose');
 const { pool } = require('../db/database');
 const requireAuth = require('../middleware/auth');
+
+const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
+const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
+let jwks = null;
+
+function getJwks() {
+  if (!jwks && AUTH0_DOMAIN) {
+    jwks = createRemoteJWKSet(new URL(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`));
+  }
+  return jwks;
+}
 
 const router = express.Router();
 
@@ -45,6 +57,42 @@ router.post('/login', async (req, res) => {
   } catch (err) {
     console.error('[Auth] login error:', err.message);
     res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Auth0 social login — exchanges an Auth0 ID token for an app JWT
+router.post('/oauth', async (req, res) => {
+  const { id_token } = req.body;
+  if (!id_token) return res.status(400).json({ error: 'id_token required' });
+  if (!AUTH0_DOMAIN || !AUTH0_CLIENT_ID) {
+    return res.status(503).json({ error: 'Social login not configured on this server' });
+  }
+
+  try {
+    const { payload } = await jwtVerify(id_token, getJwks(), {
+      issuer: `https://${AUTH0_DOMAIN}/`,
+      audience: AUTH0_CLIENT_ID,
+    });
+
+    const email = payload.email;
+    if (!email) return res.status(400).json({ error: 'No email in token' });
+
+    const name = payload.name || payload.nickname || email.split('@')[0];
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (email, name, password_hash)
+       VALUES ($1, $2, NULL)
+       ON CONFLICT (email) DO UPDATE SET name = COALESCE(users.name, EXCLUDED.name)
+       RETURNING id, email, name`,
+      [email.toLowerCase().trim(), name]
+    );
+
+    const user = rows[0];
+    const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, user });
+  } catch (err) {
+    console.error('[Auth] OAuth error:', err.message);
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 });
 
