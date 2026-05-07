@@ -2,54 +2,92 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Slate CSS variables ─────────────────────────────────────────────────────
+   Dark mode (default): original Tailwind slate values as RGB triples.
+   Light mode: scale is inverted (50↔950, 100↔900, …) so every inline class
+   like bg-slate-900, text-slate-400, border-slate-800 automatically adapts —
+   no dark: prefix needed in component files.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --sl-50:  248 250 252;
+  --sl-100: 241 245 249;
+  --sl-200: 226 232 240;
+  --sl-300: 203 213 225;
+  --sl-400: 148 163 184;
+  --sl-500: 100 116 139;
+  --sl-600:  71  85 105;
+  --sl-700:  51  65  85;
+  --sl-800:  30  41  59;
+  --sl-900:  15  23  42;
+  --sl-950:   2   6  23;
+}
+
+:root:not(.dark) {
+  /* Light mode — inverted slate scale */
+  --sl-50:   2   6  23;
+  --sl-100:  15  23  42;
+  --sl-200:  30  41  59;
+  --sl-300:  51  65  85;
+  --sl-400:  71  85 105;
+  --sl-500: 100 116 139;  /* midpoint stays the same */
+  --sl-600: 148 163 184;
+  --sl-700: 203 213 225;
+  --sl-800: 226 232 240;
+  --sl-900: 255 255 255;  /* pure white cards (nicer than #f1f5f9) */
+  --sl-950: 248 250 252;  /* very-light page bg */
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    /* dark:  bg-slate-950 = #020617, text-slate-100 = #f1f5f9  */
+    /* light: bg-slate-950 = #f8fafc, text-slate-100 = #0f172a  */
+    @apply bg-slate-950 text-slate-100 antialiased;
   }
 }
 
-/* Dark mode body */
-.dark body {
-  @apply bg-slate-950 text-slate-100;
-}
+/* ── Components ──────────────────────────────────────────────────────────── */
+/* Single definition works in both themes thanks to CSS variable inversion.  */
 
 @layer components {
   .card {
-    @apply bg-white border border-slate-200 rounded-xl;
+    /* dark: bg #0f172a border #1e293b  |  light: bg #fff border #e2e8f0 */
+    @apply bg-slate-900 border border-slate-800 rounded-xl;
   }
   .btn-primary {
-    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    /* dark: bg #1e293b hover #334155 border #334155 text #e2e8f0 */
+    /* light: bg #e2e8f0 hover #cbd5e1 border #cbd5e1 text #1e293b */
+    @apply bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200
+           font-medium px-4 py-2 rounded-lg transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-ghost {
-    @apply text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-3 py-2 rounded-lg transition-colors;
+    /* dark: text #94a3b8 hover-text #f1f5f9 hover-bg #1e293b */
+    /* light: text #475569 hover-text #0f172a hover-bg #e2e8f0 */
+    @apply text-slate-400 hover:text-slate-100 hover:bg-slate-800 px-3 py-2 rounded-lg transition-colors;
   }
   .input {
-    @apply bg-white border border-slate-300 text-slate-900 rounded-lg px-3 py-2
-           placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
-           w-full transition-colors;
+    /* dark: bg #1e293b border #334155 text #e2e8f0 placeholder #64748b */
+    /* light: bg #e2e8f0 border #cbd5e1 text #1e293b placeholder #64748b */
+    @apply bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2
+           placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500
+           focus:border-transparent w-full transition-colors;
   }
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 }
 
-/* Dark mode component overrides */
-.dark .card { @apply bg-slate-900 border-slate-800; }
-.dark .btn-secondary { @apply bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200; }
-.dark .btn-ghost { @apply text-slate-400 hover:text-slate-100 hover:bg-slate-800; }
-.dark .input {
-  @apply bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-500;
-}
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+/* These also benefit from variable inversion automatically.                  */
 
-/* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { @apply bg-slate-100; }
-::-webkit-scrollbar-thumb { @apply bg-slate-300 rounded-full; }
-::-webkit-scrollbar-thumb:hover { @apply bg-slate-400; }
-
-.dark ::-webkit-scrollbar-track { @apply bg-slate-900; }
-.dark ::-webkit-scrollbar-thumb { @apply bg-slate-700; }
-.dark ::-webkit-scrollbar-thumb:hover { @apply bg-slate-600; }
+::-webkit-scrollbar-track  { @apply bg-slate-900; }
+::-webkit-scrollbar-thumb  { @apply bg-slate-700 rounded-full; }
+::-webkit-scrollbar-thumb:hover { @apply bg-slate-600; }

@@ -8,8 +8,9 @@ const mammoth = require('mammoth');
 const PLAN_SYSTEM = `You are an expert interview preparation coach.
 Generate a structured, realistic study plan as a JSON object.
 Include only actionable tasks grouped by category. Be specific and practical.
-For the resources field of every task, always provide real, working direct URLs (https://...).
-Examples of valid resources: "https://leetcode.com/problems/two-sum/, https://neetcode.io"
+For the resources field of every task, provide real direct URLs (https://...).
+Use stable top-level or section URLs, not deep links that may break.
+Good examples: "https://leetcode.com, https://neetcode.io, https://github.com/donnemartin/system-design-primer"
 Never use plain names like "LeetCode" — always the full URL.`;
 
 const PLAN_JSON_TEMPLATE = `Return ONLY a JSON object:
