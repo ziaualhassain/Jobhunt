@@ -3,11 +3,11 @@ import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Ta
 import type { Job } from '../types'
 
 const SOURCE_COLORS: Record<string, string> = {
-  RemoteOK: 'bg-emerald-900/50 text-emerald-400 border-emerald-800',
-  'We Work Remotely': 'bg-purple-900/50 text-purple-400 border-purple-800',
-  Himalayas: 'bg-blue-900/50 text-blue-400 border-blue-800',
-  ArbeitNow: 'bg-orange-900/50 text-orange-400 border-orange-800',
-  TheirStack: 'bg-rose-900/50 text-rose-400 border-rose-800',
+  RemoteOK:         'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800',
+  'We Work Remotely': 'bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-800',
+  Himalayas:        'bg-blue-100   dark:bg-blue-900/50   text-blue-700   dark:text-blue-400   border-blue-300   dark:border-blue-800',
+  ArbeitNow:        'bg-orange-100 dark:bg-orange-900/50 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-800',
+  TheirStack:       'bg-rose-100   dark:bg-rose-900/50   text-rose-700   dark:text-rose-400   border-rose-300   dark:border-rose-800',
 }
 
 interface Props {
@@ -18,7 +18,7 @@ interface Props {
 
 export default function JobCard({ job, isSaved, onSave }: Props) {
   const [expanded, setExpanded] = useState(false)
-  const sourceClass = SOURCE_COLORS[job.source] ?? 'bg-slate-800 text-slate-400 border-slate-700'
+  const sourceClass = SOURCE_COLORS[job.source] ?? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
   const tags = job.tags ? job.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) : []
 
   return (
@@ -57,7 +57,7 @@ export default function JobCard({ job, isSaved, onSave }: Props) {
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {tags.map(tag => (
-                <span key={tag} className="flex items-center gap-0.5 badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">
+                <span key={tag} className="flex items-center gap-0.5 badge bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-700 text-[10px]">
                   <Tag size={9} />{tag}
                 </span>
               ))}
