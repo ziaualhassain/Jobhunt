@@ -2,37 +2,147 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Slate CSS variables ─────────────────────────────────────────────────────
+   Dark mode (default): original Tailwind slate values as RGB triples.
+   Light mode: warm neutral stone palette — softer and warmer than plain white.
+   Every inline slate class (bg-slate-900, text-slate-400, etc.) auto-adapts
+   via these variables — no dark: prefix needed in page component files.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --sl-50:  248 250 252;
+  --sl-100: 241 245 249;
+  --sl-200: 226 232 240;
+  --sl-300: 203 213 225;
+  --sl-400: 148 163 184;
+  --sl-500: 100 116 139;
+  --sl-600:  71  85 105;
+  --sl-700:  51  65  85;
+  --sl-800:  30  41  59;
+  --sl-900:  15  23  42;
+  --sl-950:   2   6  23;
+
+  color-scheme: dark;
+}
+
+:root:not(.dark) {
+  /* Warm neutral stone palette — subtle, not stark white */
+  --sl-50:  12  10   9;   /* stone-950 — darkest text          */
+  --sl-100: 28  25  23;   /* stone-900 — primary headings      */
+  --sl-200: 41  37  36;   /* stone-800 — dark text             */
+  --sl-300: 68  64  60;   /* stone-700 — body text             */
+  --sl-400: 87  83  78;   /* stone-600 — secondary text        */
+  --sl-500: 118 112 107;  /* stone-500 — muted / placeholder   */
+  --sl-600: 161 157 153;  /* warm mid-gray — subtle labels     */
+  --sl-700: 214 212 208;  /* warm light — borders              */
+  --sl-800: 237 235 232;  /* warm surface — input bg, hovers   */
+  --sl-900: 250 249 247;  /* warm near-white — card bg         */
+  --sl-950: 245 244 241;  /* warm off-white — page bg          */
+
+  color-scheme: light;
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
 @layer base {
   body {
+    /* dark:  bg-slate-950 = #020617   text-slate-100 = #f1f5f9  */
+    /* light: bg-slate-950 = #f5f4f1   text-slate-100 = #1c1917  */
     @apply bg-slate-950 text-slate-100 antialiased;
   }
 }
+
+/* ── Components ──────────────────────────────────────────────────────────── */
 
 @layer components {
   .card {
     @apply bg-slate-900 border border-slate-800 rounded-xl;
   }
   .btn-primary {
-    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-brand-500 hover:bg-brand-600 text-white font-medium px-4 py-2 rounded-lg
+           transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200
+           font-medium px-4 py-2 rounded-lg transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-ghost {
     @apply text-slate-400 hover:text-slate-100 hover:bg-slate-800 px-3 py-2 rounded-lg transition-colors;
   }
   .input {
-    @apply bg-slate-800 border border-slate-700 text-slate-100 rounded-lg px-3 py-2
-           placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent
-           w-full transition-colors;
+    @apply bg-slate-800 border border-slate-700 text-slate-200 rounded-lg px-3 py-2
+           placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500
+           focus:border-transparent w-full transition-colors;
   }
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 }
 
-/* Custom scrollbar */
+/* ── Light mode enhancements ─────────────────────────────────────────────── */
+/*   These rules only apply when .dark is absent from <html>.                 */
+
+/* Elevation: cards feel like physical sheets above the page */
+:root:not(.dark) .card {
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 0.07),
+    0 1px 2px -1px rgb(0 0 0 / 0.05);
+}
+
+/* Inputs: slight inset so the field looks recessed into the card */
+:root:not(.dark) .input {
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.06);
+}
+:root:not(.dark) .input:focus {
+  box-shadow: 0 0 0 3px rgb(14 165 233 / 0.18), inset 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+/* Secondary button: subtle lift so it reads as clickable */
+:root:not(.dark) .btn-secondary {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.07);
+}
+
+/* Header: floating shadow replaces the flat border separation */
+:root:not(.dark) header {
+  box-shadow: 0 1px 10px rgb(0 0 0 / 0.07), 0 0 0 1px rgb(0 0 0 / 0.04);
+}
+
+/* ── Light mode: status & accent colour overrides ────────────────────────── */
+/*   Light-wash colours (emerald-400, red-400, etc.) that look great on dark  */
+/*   lack contrast on warm light backgrounds — swap to richer mid-range shades */
+
+/* Brand: brand-400 (#38bdf8 = very light sky) → brand-700 (#0369a1 = deep sky) */
+:root:not(.dark) .text-brand-400  { color: #0369a1; }
+/* Keep hover/interactive brand at brand-600 for a slightly lighter hover */
+:root:not(.dark) .hover\:text-brand-300:hover { color: #0284c7; }
+
+/* Green / success */
+:root:not(.dark) .text-emerald-400 { color: #059669; } /* emerald-600 */
+:root:not(.dark) .text-emerald-300 { color: #10b981; } /* emerald-500 */
+:root:not(.dark) .text-emerald-500 { color: #047857; } /* emerald-700 */
+:root:not(.dark) .hover\:text-emerald-300:hover { color: #10b981; }
+
+/* Red / danger */
+:root:not(.dark) .text-red-400 { color: #dc2626; } /* red-600 */
+:root:not(.dark) .text-red-300 { color: #ef4444; } /* red-500 */
+:root:not(.dark) .text-red-500 { color: #b91c1c; } /* red-700 */
+:root:not(.dark) .hover\:text-red-300:hover { color: #ef4444; }
+
+/* Yellow / warning */
+:root:not(.dark) .text-yellow-400 { color: #ca8a04; } /* yellow-600 */
+:root:not(.dark) .text-yellow-300 { color: #d97706; } /* amber-600 */
+
+/* Amber */
+:root:not(.dark) .text-amber-400 { color: #b45309; } /* amber-700 */
+
+/* Sky */
+:root:not(.dark) .text-sky-400 { color: #0284c7; } /* sky-600 */
+:root:not(.dark) .text-sky-300 { color: #0ea5e9; } /* sky-500 */
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { @apply bg-slate-900; }
-::-webkit-scrollbar-thumb { @apply bg-slate-700 rounded-full; }
+::-webkit-scrollbar-track  { @apply bg-slate-900; }
+::-webkit-scrollbar-thumb  { @apply bg-slate-700 rounded-full; }
 ::-webkit-scrollbar-thumb:hover { @apply bg-slate-600; }
