@@ -313,17 +313,17 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
           {messages.map((msg) => (
             <div key={msg.id} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                msg.role === 'user' ? 'bg-brand-500/30' : 'bg-slate-700'
+                msg.role === 'user' ? 'bg-brand-100 dark:bg-brand-500/30' : 'bg-slate-800 dark:bg-slate-700'
               }`}>
                 {msg.role === 'user'
-                  ? <User size={13} className="text-brand-300" />
-                  : <Bot size={13} className="text-slate-300" />
+                  ? <User size={13} className="text-brand-700 dark:text-brand-300" />
+                  : <Bot size={13} className="text-slate-500 dark:text-slate-300" />
                 }
               </div>
               <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-brand-500/20 text-brand-100 rounded-tr-sm whitespace-pre-wrap'
-                  : 'bg-slate-800 text-slate-200 rounded-tl-sm'
+                  ? 'bg-brand-100 dark:bg-brand-500/20 text-brand-900 dark:text-brand-100 rounded-tr-sm whitespace-pre-wrap'
+                  : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 dark:border-transparent'
               }`}>
                 {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
               </div>
