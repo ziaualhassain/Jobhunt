@@ -27,6 +27,11 @@ export async function getMe(): Promise<User> {
   return res.data;
 }
 
+export async function loginWithAuth0Token(idToken: string): Promise<{ token: string; user: User }> {
+  const res = await api.post('/auth/oauth', { id_token: idToken });
+  return res.data;
+}
+
 // ── Profile ───────────────────────────────────────────────────────────────────
 
 export interface UserPreferences {
