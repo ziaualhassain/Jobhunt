@@ -1,32 +1,41 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const jwksRsa = require('jwks-rsa');
+const https = require('https');
+const crypto = require('crypto');
 const { pool } = require('../db/database');
 const requireAuth = require('../middleware/auth');
 
 const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN;
 const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
 
-let jwksClient = null;
-function getJwksClient() {
-  if (!jwksClient && AUTH0_DOMAIN) {
-    jwksClient = jwksRsa({
-      jwksUri: `https://${AUTH0_DOMAIN}/.well-known/jwks.json`,
-      cache: true,
-      rateLimit: true,
-    });
-  }
-  return jwksClient;
+// Simple JWKS cache — avoids hitting Auth0 on every request
+let jwksCache = null;
+let jwksCacheAt = 0;
+const JWKS_TTL = 60 * 60 * 1000; // 1 hour
+
+function fetchJwks() {
+  if (jwksCache && Date.now() - jwksCacheAt < JWKS_TTL) return Promise.resolve(jwksCache);
+  return new Promise((resolve, reject) => {
+    https.get(`https://${AUTH0_DOMAIN}/.well-known/jwks.json`, res => {
+      let raw = '';
+      res.on('data', c => raw += c);
+      res.on('end', () => {
+        try {
+          jwksCache = JSON.parse(raw);
+          jwksCacheAt = Date.now();
+          resolve(jwksCache);
+        } catch (e) { reject(e); }
+      });
+    }).on('error', reject);
+  });
 }
 
-function getSigningKey(header) {
-  return new Promise((resolve, reject) => {
-    getJwksClient().getSigningKey(header.kid, (err, key) => {
-      if (err) return reject(err);
-      resolve(key.getPublicKey());
-    });
-  });
+async function getPublicKey(kid) {
+  const { keys } = await fetchJwks();
+  const jwk = keys.find(k => k.kid === kid && k.use === 'sig');
+  if (!jwk) throw new Error(`Signing key not found for kid: ${kid}`);
+  return crypto.createPublicKey({ key: jwk, format: 'jwk' }).export({ type: 'spki', format: 'pem' });
 }
 
 const router = express.Router();
@@ -85,7 +94,7 @@ router.post('/oauth', async (req, res) => {
     const decoded = await new Promise((resolve, reject) => {
       jwt.verify(
         id_token,
-        (header, cb) => getSigningKey(header).then(k => cb(null, k)).catch(cb),
+        (header, cb) => getPublicKey(header.kid).then(k => cb(null, k)).catch(cb),
         { issuer: `https://${AUTH0_DOMAIN}/`, audience: AUTH0_CLIENT_ID },
         (err, payload) => err ? reject(err) : resolve(payload)
       );
