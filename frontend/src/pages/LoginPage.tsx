@@ -1,14 +1,16 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, Navigate } from 'react-router-dom'
 import { Cloud, Loader2, AlertCircle } from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { loginUser } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 export default function LoginPage() {
-  const { login } = useAuth()
+  const { login, user } = useAuth()
   const { loginWithRedirect, isLoading: auth0Loading } = useAuth0()
   const navigate = useNavigate()
+
+  if (user) return <Navigate to="/" replace />
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')

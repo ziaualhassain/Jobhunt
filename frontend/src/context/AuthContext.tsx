@@ -24,35 +24,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Restore session from stored JWT on mount (wait for Auth0 to finish loading first)
   useEffect(() => {
     if (auth0Loading) return
-    if (!token) { setLoading(false); return }
-    getMe()
-      .then(setUser)
-      .catch(() => { localStorage.removeItem('token'); setToken(null) })
-      .finally(() => setLoading(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth0Loading])
 
-  // Exchange Auth0 ID token for our app JWT after social login
-  useEffect(() => {
-    if (auth0Loading || !isAuthenticated || token) return
-    getIdTokenClaims().then(async claims => {
-      const rawToken = claims?.__raw
-      if (!rawToken) return
-      try {
-        const { token: appToken, user: appUser } = await loginWithAuth0Token(rawToken)
-        localStorage.setItem('token', appToken)
-        setToken(appToken)
-        setUser(appUser)
-      } catch (err) {
-        console.error('[Auth] Auth0 token exchange failed:', err)
-      } finally {
-        setLoading(false)
+    async function init() {
+      // Case 1: stored app JWT → verify with backend
+      const stored = localStorage.getItem('token')
+      if (stored) {
+        try {
+          const u = await getMe()
+          setUser(u)
+        } catch {
+          localStorage.removeItem('token')
+          setToken(null)
+        } finally {
+          setLoading(false)
+        }
+        return
       }
-    })
-  }, [isAuthenticated, auth0Loading, token, getIdTokenClaims])
+
+      // Case 2: Auth0 just completed social login → exchange ID token for app JWT
+      if (isAuthenticated) {
+        try {
+          const claims = await getIdTokenClaims()
+          const rawToken = claims?.__raw
+          if (!rawToken) { setLoading(false); return }
+          const { token: appToken, user: appUser } = await loginWithAuth0Token(rawToken)
+          localStorage.setItem('token', appToken)
+          setToken(appToken)
+          setUser(appUser)
+        } catch (err) {
+          console.error('[Auth] Auth0 token exchange failed:', err)
+        } finally {
+          setLoading(false)
+        }
+        return
+      }
+
+      // Case 3: no session at all
+      setLoading(false)
+    }
+
+    init()
+  // auth0Loading and isAuthenticated are the only external triggers;
+  // intentionally excluding token/getMe/getIdTokenClaims to avoid re-run loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth0Loading, isAuthenticated])
 
   const login = useCallback((t: string, u: User) => {
     localStorage.setItem('token', t)
