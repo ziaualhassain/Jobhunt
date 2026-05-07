@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { Search, Kanban, Cloud, FileSearch2, MessageSquare, TrendingUp, Menu, X, UserCircle2 } from 'lucide-react'
+import { Routes, Route, NavLink, Navigate, Link } from 'react-router-dom'
+import { Kanban, Cloud, FileSearch2, MessageSquare, TrendingUp, Menu, X, UserCircle2 } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'
@@ -20,7 +20,6 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_LINKS = [
-  { to: '/',                end: true,  icon: Search,       label: 'Search Jobs'     },
   { to: '/tracker',         end: false, icon: Kanban,        label: 'Tracker'         },
   { to: '/resume-enhancer', end: false, icon: FileSearch2,   label: 'Resume Enhancer' },
   { to: '/interview-coach', end: false, icon: MessageSquare, label: 'Interview Coach' },
@@ -45,15 +44,15 @@ export default function App() {
         <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-4">
 
-            {/* Logo */}
-            <div className="flex items-center gap-2 shrink-0">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
+            {/* Logo — clicks to home */}
+            <Link to="/" className="flex items-center gap-2 shrink-0 group">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/40 transition-shadow">
                 <Cloud size={14} strokeWidth={2.5} className="text-white" />
               </div>
-              <span className="hidden xs:inline font-bold text-base text-slate-100 tracking-tight">
+              <span className="hidden xs:inline font-bold text-base text-slate-100 tracking-tight group-hover:text-white transition-colors">
                 Job<span className="text-brand-400">Hunters</span>
               </span>
-            </div>
+            </Link>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-0.5 ml-3">
