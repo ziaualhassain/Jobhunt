@@ -10,6 +10,7 @@ import ProfilePage from './pages/ProfilePage'
 import ResumeEnhancerPage from './pages/ResumeEnhancerPage'
 import InterviewCoachPage from './pages/InterviewCoachPage'
 import PrepTrackerPage from './pages/PrepTrackerPage'
+import CallbackPage from './pages/CallbackPage'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -128,6 +129,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/callback" element={<CallbackPage />} />
           <Route path="/" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
           <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
