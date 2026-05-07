@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom'
-import { Search, Kanban, Cloud, LogOut, FileSearch2, MessageSquare, TrendingUp, Menu, X } from 'lucide-react'
+import { Search, Kanban, Cloud, FileSearch2, MessageSquare, TrendingUp, Menu, X, UserCircle2 } from 'lucide-react'
 import { useAuth } from './context/AuthContext'
 import JobsPage from './pages/JobsPage'
 import TrackerPage from './pages/TrackerPage'
@@ -27,61 +27,61 @@ const NAV_LINKS = [
   { to: '/prep-tracker',    end: false, icon: TrendingUp,    label: 'Prep Tracker'    },
 ]
 
+function navCls(isActive: boolean) {
+  return `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+    isActive
+      ? 'bg-brand-500/15 text-brand-400 ring-1 ring-inset ring-brand-500/25'
+      : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
+  }`
+}
+
 export default function App() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div className="min-h-screen flex flex-col">
       {user && (
-        <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+        <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md sticky top-0 z-50">
           <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-4">
+
             {/* Logo */}
-            <div className="flex items-center gap-2 font-bold text-lg text-brand-400 shrink-0">
-              <Cloud size={22} />
-              <span className="hidden xs:inline">JobHunters</span>
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20">
+                <Cloud size={14} strokeWidth={2.5} className="text-white" />
+              </div>
+              <span className="hidden xs:inline font-bold text-base text-slate-100 tracking-tight">
+                Job<span className="text-brand-400">Hunters</span>
+              </span>
             </div>
 
             {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1 ml-2">
+            <nav className="hidden md:flex items-center gap-0.5 ml-3">
               {NAV_LINKS.map(({ to, end, icon: Icon, label }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  className={({ isActive }) =>
-                    `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                      isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
-                    }`
-                  }
-                >
-                  <Icon size={15} />{label}
+                <NavLink key={to} to={to} end={end} className={({ isActive }) => navCls(isActive)}>
+                  <Icon size={15} strokeWidth={1.75} />
+                  {label}
                 </NavLink>
               ))}
             </nav>
 
-            {/* Right side */}
+            {/* Profile avatar — right side */}
             <div className="ml-auto flex items-center gap-2">
               <NavLink
                 to="/profile"
                 className={({ isActive }) =>
-                  `flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors ${
-                    isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                  `flex items-center gap-2.5 pl-1.5 pr-3 py-1.5 rounded-xl transition-all duration-150 ${
+                    isActive
+                      ? 'bg-brand-500/15 ring-1 ring-inset ring-brand-500/25'
+                      : 'hover:bg-slate-800/70'
                   }`
                 }
               >
-                <div className="w-6 h-6 rounded-full bg-brand-500/30 text-brand-300 flex items-center justify-center text-[11px] font-bold uppercase">
+                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center text-[11px] font-bold text-white uppercase shadow-md shadow-brand-500/25 ring-2 ring-brand-500/20">
                   {user.name[0]}
                 </div>
-                <span className="hidden sm:inline text-sm">{user.name}</span>
+                <span className="hidden sm:inline text-sm font-medium text-slate-300">{user.name}</span>
               </NavLink>
-              <button
-                onClick={logout}
-                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
-                title="Sign out"
-              >
-                <LogOut size={14} />
-              </button>
 
               {/* Hamburger — mobile only */}
               <button
@@ -89,14 +89,14 @@ export default function App() {
                 className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
                 aria-label="Toggle menu"
               >
-                {menuOpen ? <X size={18} /> : <Menu size={18} />}
+                {menuOpen ? <X size={17} strokeWidth={2} /> : <Menu size={17} strokeWidth={2} />}
               </button>
             </div>
           </div>
 
-          {/* Mobile dropdown menu */}
+          {/* Mobile dropdown */}
           {menuOpen && (
-            <div className="md:hidden border-t border-slate-800 bg-slate-950 px-4 py-3 space-y-1">
+            <div className="md:hidden border-t border-slate-800/80 bg-slate-950 px-3 py-2 space-y-0.5">
               {NAV_LINKS.map(({ to, end, icon: Icon, label }) => (
                 <NavLink
                   key={to}
@@ -104,21 +104,26 @@ export default function App() {
                   end={end}
                   onClick={() => setMenuOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors w-full ${
-                      isActive ? 'bg-brand-500/20 text-brand-400' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800'
+                    `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full ${
+                      isActive ? 'bg-brand-500/15 text-brand-400 ring-1 ring-inset ring-brand-500/25' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
                     }`
                   }
                 >
-                  <Icon size={16} />{label}
+                  <Icon size={16} strokeWidth={1.75} />{label}
                 </NavLink>
               ))}
-              <div className="border-t border-slate-800 pt-2 mt-2">
-                <button
-                  onClick={() => { setMenuOpen(false); logout() }}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors w-full"
+              <div className="border-t border-slate-800/60 pt-1.5 mt-1.5">
+                <NavLink
+                  to="/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className={({ isActive }) =>
+                    `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full ${
+                      isActive ? 'bg-brand-500/15 text-brand-400 ring-1 ring-inset ring-brand-500/25' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/70'
+                    }`
+                  }
                 >
-                  <LogOut size={16} />Sign out
-                </button>
+                  <UserCircle2 size={16} strokeWidth={1.75} />Profile &amp; Settings
+                </NavLink>
               </div>
             </div>
           )}
@@ -127,19 +132,18 @@ export default function App() {
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-4 sm:py-6">
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/callback" element={<CallbackPage />} />
-          <Route path="/" element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
-          <Route path="/tracker" element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/login"           element={<LoginPage />} />
+          <Route path="/register"        element={<RegisterPage />} />
+          <Route path="/callback"        element={<CallbackPage />} />
+          <Route path="/"                element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
+          <Route path="/tracker"         element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
+          <Route path="/profile"         element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/resume-enhancer" element={<ProtectedRoute><ResumeEnhancerPage /></ProtectedRoute>} />
           <Route path="/interview-coach" element={<ProtectedRoute><InterviewCoachPage /></ProtectedRoute>} />
-          <Route path="/prep-tracker" element={<ProtectedRoute><PrepTrackerPage /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/prep-tracker"    element={<ProtectedRoute><PrepTrackerPage /></ProtectedRoute>} />
+          <Route path="*"                element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
   )
 }
-
