@@ -20,11 +20,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_LINKS = [
-  { to: '/',                end: true,  icon: Briefcase,     label: 'Job Listings'    },
-  { to: '/tracker',         end: false, icon: Kanban,        label: 'Tracker'         },
-  { to: '/resume-enhancer', end: false, icon: FileSearch2,   label: 'Resume Enhancer' },
-  { to: '/interview-coach', end: false, icon: MessageSquare, label: 'Interview Coach' },
-  { to: '/prep-tracker',    end: false, icon: TrendingUp,    label: 'Prep Tracker'    },
+  { to: '/',                end: true,  icon: Briefcase,     label: 'Job Listings'              },
+  { to: '/tracker',         end: false, icon: Kanban,        label: 'Interview Tracker'         },
+  { to: '/resume-enhancer', end: false, icon: FileSearch2,   label: 'Resume Creator & Enhancer' },
+  { to: '/interview-coach', end: false, icon: MessageSquare, label: 'Interview Coach'           },
+  { to: '/prep-tracker',    end: false, icon: TrendingUp,    label: 'Preparation Tracker'       },
 ]
 
 function navCls(isActive: boolean) {
@@ -43,10 +43,10 @@ export default function App() {
     <div className="min-h-screen flex flex-col">
       {user && (
         <header className="border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-4">
+          <div className="max-w-7xl mx-auto px-4 h-14 flex items-center">
 
-            {/* Logo — clicks to home */}
-            <Link to="/" className="flex items-center gap-2 shrink-0 group">
+            {/* Logo — fixed left */}
+            <Link to="/" className="flex items-center gap-2 flex-none group">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/40 transition-shadow">
                 <Cloud size={14} strokeWidth={2.5} className="text-white" />
               </div>
@@ -55,8 +55,8 @@ export default function App() {
               </span>
             </Link>
 
-            {/* Desktop nav */}
-            <nav className="hidden md:flex items-center gap-1 ml-3">
+            {/* Desktop nav — centered between logo and profile */}
+            <nav className="hidden md:flex flex-1 items-center justify-center gap-1">
               {NAV_LINKS.map(({ to, end, icon: Icon, label }) => (
                 <NavLink key={to} to={to} end={end} className={({ isActive }) => navCls(isActive)}>
                   <Icon size={15} strokeWidth={1.75} />
@@ -65,8 +65,8 @@ export default function App() {
               ))}
             </nav>
 
-            {/* Profile avatar — right side */}
-            <div className="ml-auto flex items-center gap-2">
+            {/* Profile avatar — fixed right */}
+            <div className="flex-none ml-auto md:ml-0 flex items-center gap-2">
               <NavLink
                 to="/profile"
                 className={({ isActive }) =>
