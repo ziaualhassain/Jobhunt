@@ -4,7 +4,7 @@ import {
   Target, Trash2, CheckCircle2, Circle, ChevronDown, ChevronUp,
   Loader2, Upload, Flame, Clock, Sparkles, X,
   TrendingUp, AlertCircle, ExternalLink, BookOpen, ChevronLeft, ChevronRight,
-  MessageCircle, Send, Bot, User,
+  MessageCircle, Send, Bot, User, Download,
 } from 'lucide-react'
 import Markdown from '../components/Markdown'
 import {
@@ -216,6 +216,50 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
   }
 
+  function downloadNotes() {
+    if (messages.length === 0) return
+
+    const date = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    })
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const bar  = '═'.repeat(64)
+    const dash = '─'.repeat(64)
+
+    const lines: string[] = [
+      bar,
+      '  REVISION NOTES',
+      `  ${task.title}`,
+      bar,
+      '',
+      `  Category : ${task.category}`,
+      `  Generated: ${date} at ${time}`,
+    ]
+    if (task.description) {
+      lines.push('', `  ${task.description}`)
+    }
+    lines.push('', dash, '')
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      const label = msg.role === 'user' ? '[ YOU ]' : '[ AI COACH ]'
+      lines.push(label, msg.content.trim())
+      if (i < messages.length - 1) lines.push('', dash, '')
+    }
+
+    lines.push('', bar)
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `revision_notes_${task.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="card w-full max-w-2xl flex flex-col" style={{ height: '80vh' }}>
@@ -228,7 +272,17 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
             <p className="text-sm font-semibold text-slate-200 truncate">{task.title}</p>
             <p className="text-[10px] text-slate-500">AI tutor · history saved automatically</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+          {messages.length > 0 && (
+            <button
+              onClick={downloadNotes}
+              title="Download as revision_notes.txt"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-700 transition-colors"
+            >
+              <Download size={13} strokeWidth={2} />
+              <span className="hidden sm:inline">Save Notes</span>
+            </button>
+          )}
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 ml-1">
             <X size={17} />
           </button>
         </div>
