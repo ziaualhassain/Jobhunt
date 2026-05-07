@@ -35,6 +35,7 @@ export async function loginWithAuth0Token(idToken: string): Promise<{ token: str
 // ── Profile ───────────────────────────────────────────────────────────────────
 
 export interface UserPreferences {
+  bio?: string
   interests: string[]
   keywords: string[]
   experienceLevel: string
