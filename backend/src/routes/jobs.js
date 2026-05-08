@@ -117,13 +117,12 @@ router.get('/search', async (req, res) => {
       region,
     };
 
-    // Live sources (RemoteOK, WWR, Himalayas, ArbeitNow) only carry Remote jobs.
-    // Skip calling them entirely when the user wants a specific non-Remote region —
-    // they would return nothing useful and waste 4 HTTP calls.
-    const skipLive = region && region !== 'Remote';
-
+    // Live sources (RemoteOK, WWR, Himalayas, ArbeitNow) carry Remote jobs.
+    // Remote jobs are relevant to users in any country, so always include them.
+    // Only skip live sources when the user explicitly wants Remote-only AND has
+    // no other filters — not a scenario that helps here.
     const [liveJobs, theirStackJobs] = await Promise.all([
-      skipLive ? Promise.resolve([]) : aggregateJobs(filters),
+      aggregateJobs(filters),
       getTheirStackJobs(filters),
     ]);
 

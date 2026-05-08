@@ -311,9 +311,17 @@ async function aggregateJobs(filters = {}) {
     );
   }
 
-  // Region filter — applied before dedup so we don't waste work
-  if (region) {
-    allJobs = allJobs.filter(job => (job.region || classifyRegion(job.location)) === region);
+  // Region filter.
+  // When a specific country is selected (e.g. India), include both country-specific
+  // jobs AND remote jobs — remote jobs are relevant to users in any country.
+  // When Remote is explicitly selected, show only remote jobs.
+  if (region && region !== 'Remote') {
+    allJobs = allJobs.filter(job => {
+      const jobRegion = job.region || classifyRegion(job.location);
+      return jobRegion === region || jobRegion === 'Remote';
+    });
+  } else if (region === 'Remote') {
+    allJobs = allJobs.filter(job => (job.region || classifyRegion(job.location)) === 'Remote');
   }
 
   // Deduplicate
