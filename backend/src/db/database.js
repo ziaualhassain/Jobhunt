@@ -154,6 +154,14 @@ async function initDb() {
   await pool.query(`
     ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
   `);
+  // Add region column to theirstack_jobs for country-based filtering
+  await pool.query(`
+    ALTER TABLE theirstack_jobs ADD COLUMN IF NOT EXISTS region TEXT DEFAULT 'India';
+  `);
+  // Back-fill any existing rows that pre-date the region column
+  await pool.query(`
+    UPDATE theirstack_jobs SET region = 'India' WHERE region IS NULL;
+  `);
   console.log('[DB] Schema ready');
 }
 

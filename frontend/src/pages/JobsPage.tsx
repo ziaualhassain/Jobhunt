@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog } from 'lucide-react'
-import SearchForm from '../components/SearchForm'
+import SearchForm, { REGIONS } from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
@@ -67,12 +67,31 @@ export default function JobsPage() {
   const profileKeywords = profile?.preferences?.keywords ?? []
   const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
 
+  // Map free-text profile location → normalised region tag
+  function deriveRegion(): string {
+    const loc = (profile?.preferences?.location ?? '').toLowerCase()
+    const isRemote = profile?.preferences?.remote ?? true
+    if (!loc && isRemote) return 'Remote'
+    if (loc.includes('remote')) return 'Remote'
+    if (loc.includes('india')) return 'India'
+    if (loc.includes('us') || loc.includes('usa') || loc.includes('united states') || loc.includes('america')) return 'US'
+    if (loc.includes('uk') || loc.includes('united kingdom') || loc.includes('london') || loc.includes('england')) return 'UK'
+    if (loc.includes('uae') || loc.includes('dubai') || loc.includes('united arab')) return 'UAE'
+    if (loc.includes('canada') || loc.includes('toronto') || loc.includes('vancouver')) return 'Canada'
+    if (loc.includes('australia') || loc.includes('sydney') || loc.includes('melbourne')) return 'Australia'
+    if (loc.includes('europe') || loc.includes('germany') || loc.includes('france') || loc.includes('netherlands')) return 'Europe'
+    if (loc.includes('singapore')) return 'Singapore'
+    return ''
+  }
+
+  const profileRegion = profile ? deriveRegion() : ''
+
   const curatedFilters: Partial<SearchFilters> = {
     tags: profileInterests,
     keywords: profileKeywords,
     experienceLevel: profile?.preferences?.experienceLevel ?? '',
     jobType: profile?.preferences?.jobType ?? '',
-    location: profile?.preferences?.location ?? '',
+    region: profileRegion,
     remote: profile?.preferences?.remote ?? true,
   }
 
@@ -153,12 +172,11 @@ export default function JobsPage() {
 
   const curatedJobs = curatedData?.jobs ?? []
 
-  // Chips showing which profile attributes are active in the curated feed
+  // Chips showing which profile attributes drive the curated feed
   const matchChips: string[] = [
-    ...profileInterests.slice(0, 5),
+    ...(profileRegion ? [profileRegion] : []),
+    ...profileInterests.slice(0, 4),
     ...(profile?.preferences?.experienceLevel ? [profile.preferences.experienceLevel] : []),
-    ...(profile?.preferences?.location ? [profile.preferences.location] : []),
-    ...(profile?.preferences?.remote ? ['Remote'] : []),
   ]
 
   return (
@@ -224,11 +242,14 @@ export default function JobsPage() {
                 <Sparkles size={13} className="text-brand-400 shrink-0" />
                 <span className="text-xs text-brand-300 font-medium">Matched to your profile:</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {matchChips.map(chip => (
-                    <span key={chip} className="badge bg-brand-500/15 text-brand-300 border border-brand-500/30 text-[11px]">
-                      {chip}
-                    </span>
-                  ))}
+                  {matchChips.map(chip => {
+                    const regionMeta = REGIONS.find(r => r.value === chip)
+                    return (
+                      <span key={chip} className="badge bg-brand-500/15 text-brand-300 border border-brand-500/30 text-[11px]">
+                        {regionMeta ? `${regionMeta.flag} ${chip}` : chip}
+                      </span>
+                    )
+                  })}
                   {profileKeywords.length > 0 && (
                     <span className="badge bg-slate-800 text-slate-400 border-slate-700 text-[11px]">
                       +{profileKeywords.length} keywords

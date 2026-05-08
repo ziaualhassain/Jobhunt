@@ -14,22 +14,27 @@ const STOP_WORDS = new Set([
 
 // Query TheirStack jobs stored in the DB
 async function getTheirStackJobs(filters) {
-  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '', remote = true } = filters;
+  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '', remote = true, region = '' } = filters;
 
   const conditions = [];
   const params = [];
 
+  // Region filter — exact match on the stored region column
+  if (region) {
+    params.push(region);
+    conditions.push(`region = $${params.length}`);
+  }
+
   if (keywords.length > 0) {
-    // Each keyword's words are OR-ed (any word match), keywords are also OR-ed
     const kwConditions = keywords.flatMap(kw => {
       const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
-      if (words.length === 0) return []; // skip all-stop-word keywords
+      if (words.length === 0) return [];
       const wordClauses = words.map(w => {
         params.push(`%${w}%`);
         const i = params.length;
         return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
       });
-      return [`(${wordClauses.join(' OR ')})`]; // OR within keyword — consistent with matchesKeywords
+      return [`(${wordClauses.join(' OR ')})`];
     });
     if (kwConditions.length > 0) conditions.push(`(${kwConditions.join(' OR ')})`);
   }
@@ -46,14 +51,11 @@ async function getTheirStackJobs(filters) {
     const loc = location.toLowerCase();
     params.push(`%${loc}%`);
     if (remote) {
-      // city + remote ON: show city matches OR remote/anywhere jobs
       conditions.push(`(LOWER(location) LIKE $${params.length} OR LOWER(location) LIKE '%remote%' OR LOWER(location) LIKE '%anywhere%')`);
     } else {
-      // city + remote OFF: city matches only (exclude remote)
       conditions.push(`(LOWER(location) LIKE $${params.length} AND LOWER(location) NOT LIKE '%remote%' AND LOWER(location) NOT LIKE '%anywhere%')`);
     }
   }
-  // remote=true, no location → no location filter; TheirStack rows are India jobs by default
 
   if (experienceLevel) {
     params.push(`%${experienceLevel.toLowerCase()}%`);
@@ -73,17 +75,18 @@ async function getTheirStackJobs(filters) {
   try {
     const { rows } = await pool.query(sql, params);
     return rows.map(row => ({
-      job_id: row.job_id,
-      title: row.title,
-      company: row.company,
-      location: row.location || 'India',
-      url: row.url,
+      job_id:      row.job_id,
+      title:       row.title,
+      company:     row.company,
+      location:    row.location || row.region || 'India',
+      region:      row.region   || 'India',
+      url:         row.url,
       description: row.description,
-      salary: row.salary,
-      job_type: row.job_type,
-      source: 'TheirStack',
-      tags: row.tags,
-      logo: row.logo,
+      salary:      row.salary,
+      job_type:    row.job_type,
+      source:      'TheirStack',
+      tags:        row.tags,
+      logo:        row.logo,
     }));
   } catch (err) {
     console.error('[TheirStack DB] query failed:', err.message);
@@ -91,7 +94,7 @@ async function getTheirStackJobs(filters) {
   }
 }
 
-// GET /api/jobs/search?keywords=aws,kubernetes&jobType=full-time&remote=true
+// GET /api/jobs/search
 router.get('/search', async (req, res) => {
   try {
     const {
@@ -101,19 +104,26 @@ router.get('/search', async (req, res) => {
       jobType = '',
       experienceLevel = '',
       remote = 'true',
+      region = '',
     } = req.query;
 
     const filters = {
-      keywords: keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : [],
-      tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      keywords:        keywords ? keywords.split(',').map(k => k.trim()).filter(Boolean) : [],
+      tags:            tags     ? tags.split(',').map(t => t.trim()).filter(Boolean)     : [],
       location,
       jobType,
       experienceLevel,
-      remote: remote === 'true',
+      remote:          remote === 'true',
+      region,
     };
 
+    // Live sources (RemoteOK, WWR, Himalayas, ArbeitNow) only carry Remote jobs.
+    // Skip calling them entirely when the user wants a specific non-Remote region —
+    // they would return nothing useful and waste 4 HTTP calls.
+    const skipLive = region && region !== 'Remote';
+
     const [liveJobs, theirStackJobs] = await Promise.all([
-      aggregateJobs(filters),
+      skipLive ? Promise.resolve([]) : aggregateJobs(filters),
       getTheirStackJobs(filters),
     ]);
 

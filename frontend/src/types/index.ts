@@ -3,6 +3,7 @@ export interface Job {
   title: string;
   company: string;
   location: string;
+  region?: string;
   url: string;
   description: string;
   salary: string;
@@ -47,6 +48,7 @@ export interface SearchFilters {
   jobType: string;
   experienceLevel: string;
   remote: boolean;
+  region: string;
 }
 
 export const STATUS_CONFIG: Record<

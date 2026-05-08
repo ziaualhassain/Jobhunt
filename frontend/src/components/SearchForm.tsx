@@ -24,6 +24,18 @@ const TAG_GROUPS = [
 const JOB_TYPES = ['Full-time', 'Contract', 'Part-time', 'Freelance']
 const EXPERIENCE_LEVELS = ['Junior', 'Mid-level', 'Senior', 'Lead', 'Staff', 'Principal']
 
+export const REGIONS = [
+  { value: 'Remote',    label: 'Remote',     flag: '🌐' },
+  { value: 'India',     label: 'India',      flag: '🇮🇳' },
+  { value: 'US',        label: 'US',         flag: '🇺🇸' },
+  { value: 'UK',        label: 'UK',         flag: '🇬🇧' },
+  { value: 'UAE',       label: 'UAE',        flag: '🇦🇪' },
+  { value: 'Europe',    label: 'Europe',     flag: '🇪🇺' },
+  { value: 'Canada',    label: 'Canada',     flag: '🇨🇦' },
+  { value: 'Australia', label: 'Australia',  flag: '🇦🇺' },
+  { value: 'Singapore', label: 'Singapore',  flag: '🇸🇬' },
+]
+
 interface Props {
   onSearch: (filters: Partial<SearchFilters>) => void
   onClear: () => void
@@ -34,6 +46,7 @@ interface Props {
 export default function SearchForm({ onSearch, onClear, loading, initialFilters }: Props) {
   const [keywordInput, setKeywordInput] = useState(initialFilters?.keywords?.join(', ') ?? '')
   const [selectedTags, setSelectedTags] = useState<string[]>(initialFilters?.tags ?? [])
+  const [region, setRegion] = useState(initialFilters?.region ?? '')
   const [jobType, setJobType] = useState(initialFilters?.jobType ?? '')
   const [experienceLevel, setExperienceLevel] = useState(initialFilters?.experienceLevel ?? '')
   const [location, setLocation] = useState(initialFilters?.location ?? '')
@@ -41,8 +54,8 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
   const [showFilters, setShowFilters] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
-  const hasActiveFilters = keywordInput.trim() || selectedTags.length > 0 || location.trim() ||
-    jobType || experienceLevel || !remote
+  const hasActiveFilters = keywordInput.trim() || selectedTags.length > 0 || region ||
+    location.trim() || jobType || experienceLevel || !remote
 
   function toggleTag(tag: string) {
     setSelectedTags(prev =>
@@ -53,12 +66,13 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const keywords = keywordInput.split(',').map(k => k.trim()).filter(Boolean)
-    onSearch({ keywords, tags: selectedTags, jobType, experienceLevel, location, remote })
+    onSearch({ keywords, tags: selectedTags, region, jobType, experienceLevel, location, remote })
   }
 
   function handleClear() {
     setKeywordInput('')
     setSelectedTags([])
+    setRegion('')
     setJobType('')
     setExperienceLevel('')
     setLocation('')
@@ -80,7 +94,6 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
             onChange={e => setKeywordInput(e.target.value)}
           />
         </div>
-        {/* Filter & clear buttons always visible alongside keyword on mobile */}
         <button
           type="button"
           onClick={() => setShowFilters(v => !v)}
@@ -89,7 +102,7 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
               ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
               : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'
           }`}
-          title="Toggle filters"
+          title="Toggle skill filters"
         >
           <SlidersHorizontal size={15} />
           {selectedTags.length > 0 && (
@@ -98,15 +111,27 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
         </button>
       </div>
 
-      {/* Location + action buttons row */}
+      {/* Region selector — horizontal scroll on mobile */}
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-hide -mx-0.5 px-0.5">
+        {REGIONS.map(r => (
+          <button
+            key={r.value}
+            type="button"
+            onClick={() => setRegion(prev => prev === r.value ? '' : r.value)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium whitespace-nowrap shrink-0 transition-all duration-100 ${
+              region === r.value
+                ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 ring-1 ring-brand-500/20'
+                : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:border-slate-500 hover:text-slate-300'
+            }`}
+          >
+            <span>{r.flag}</span>
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Action row */}
       <div className="flex gap-2">
-        <input
-          type="text"
-          className="input flex-1 sm:max-w-[180px]"
-          placeholder="Location (e.g. Hyderabad)"
-          value={location}
-          onChange={e => setLocation(e.target.value)}
-        />
         {hasActiveFilters && (
           <button
             type="button"
@@ -117,14 +142,13 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
             <span className="hidden sm:inline">Clear</span>
           </button>
         )}
-        <button type="submit" className="btn-primary flex items-center gap-2 shrink-0" disabled={loading}>
+        <button type="submit" className="btn-primary flex items-center gap-2 flex-1 justify-center sm:flex-none" disabled={loading}>
           <Search size={15} />
-          <span className="hidden sm:inline">{loading ? 'Searching…' : 'Search'}</span>
-          <span className="sm:hidden">{loading ? '…' : 'Go'}</span>
+          <span>{loading ? 'Searching…' : 'Search'}</span>
         </button>
       </div>
 
-      {/* Grouped tag pills — shown only when filter panel is open */}
+      {/* Skill tag groups */}
       {showFilters && (
         <div className="space-y-2.5 pt-1 border-t border-slate-800">
           {TAG_GROUPS.map(group => (
@@ -171,7 +195,7 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
       </button>
 
       {showAdvanced && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
           <div>
             <label className="block text-xs text-slate-500 mb-1">Job Type</label>
             <select className="input" value={jobType} onChange={e => setJobType(e.target.value)}>
@@ -185,6 +209,16 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
               <option value="">Any</option>
               {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">City / Area</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. Bangalore, London"
+              value={location}
+              onChange={e => setLocation(e.target.value)}
+            />
           </div>
           <div className="flex items-center gap-2 pt-3">
             <button

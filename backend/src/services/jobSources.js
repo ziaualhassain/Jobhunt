@@ -26,6 +26,7 @@ async function fetchRemoteOK(keywords, tags) {
         title: job.position,
         company: job.company,
         location: 'Remote',
+        region: 'Remote',
         url: job.url,
         description: stripHtml(job.description || ''),
         salary: job.salary || '',
@@ -61,6 +62,7 @@ async function fetchWeWorkRemotely() {
           title: extractTitle(title),
           company: extractCompany(title),
           location: 'Remote',
+          region: 'Remote',
           url: item.link,
           description: stripHtml(item.content || item.description || ''),
           salary: '',
@@ -85,19 +87,23 @@ async function fetchHimalayas(keywords) {
       params: { q: query, limit: 50 },
       timeout: 10000,
     });
-    return (res.data.jobs || []).map(job => ({
-      job_id: `himalayas-${job.id}`,
-      title: job.title,
-      company: job.companyName || '',
-      location: job.locationRestrictions?.join(', ') || 'Remote',
-      url: job.applicationLink || job.url || '',
-      description: stripHtml(job.description || ''),
-      salary: formatSalary(job.minSalary, job.maxSalary, job.currency),
-      job_type: job.jobType || 'Full-time',
-      source: 'Himalayas',
-      tags: (job.categories || []).join(', '),
-      logo: job.companyLogo || '',
-    }));
+    return (res.data.jobs || []).map(job => {
+      const loc = job.locationRestrictions?.join(', ') || 'Remote';
+      return {
+        job_id: `himalayas-${job.id}`,
+        title: job.title,
+        company: job.companyName || '',
+        location: loc,
+        region: classifyRegion(loc),
+        url: job.applicationLink || job.url || '',
+        description: stripHtml(job.description || ''),
+        salary: formatSalary(job.minSalary, job.maxSalary, job.currency),
+        job_type: job.jobType || 'Full-time',
+        source: 'Himalayas',
+        tags: (job.categories || []).join(', '),
+        logo: job.companyLogo || '',
+      };
+    });
   } catch (err) {
     console.error('[Himalayas] fetch failed:', err.message);
     return [];
@@ -118,7 +124,8 @@ async function fetchArbeitNow(keywords) {
         job_id: `arbeitnow-${job.slug}`,
         title: job.title,
         company: job.company_name,
-        location: 'Remote', // job.remote === true so normalize location
+        location: 'Remote',
+        region: 'Remote',
         url: job.url,
         description: stripHtml(job.description || ''),
         salary: '',
@@ -132,6 +139,30 @@ async function fetchArbeitNow(keywords) {
     return [];
   }
 }
+
+// ─── Region classification ────────────────────────────────────────────────────
+
+const REGION_MAP = [
+  { region: 'Remote',    patterns: ['remote', 'anywhere', 'worldwide', 'global', 'international'] },
+  { region: 'India',     patterns: ['india', 'bangalore', 'bengaluru', 'mumbai', 'delhi', 'hyderabad', 'chennai', 'pune', 'kolkata', 'noida', 'gurgaon', 'gurugram'] },
+  { region: 'US',        patterns: ['united states', 'usa', ' us ', ', us', 'new york', 'san francisco', 'california', 'texas', 'chicago', 'seattle', 'boston', 'austin', 'los angeles', 'denver', 'atlanta', 'miami'] },
+  { region: 'UK',        patterns: ['united kingdom', 'england', 'london', 'manchester', 'edinburgh', 'birmingham', 'bristol', 'leeds'] },
+  { region: 'UAE',       patterns: ['uae', 'dubai', 'abu dhabi', 'united arab', 'sharjah'] },
+  { region: 'Canada',    patterns: ['canada', 'toronto', 'vancouver', 'montreal', 'calgary'] },
+  { region: 'Australia', patterns: ['australia', 'sydney', 'melbourne', 'brisbane', 'perth'] },
+  { region: 'Europe',    patterns: ['europe', 'european', 'germany', 'berlin', 'munich', 'france', 'paris', 'netherlands', 'amsterdam', 'spain', 'madrid', 'italy', 'sweden', 'switzerland', 'poland'] },
+  { region: 'Singapore', patterns: ['singapore'] },
+];
+
+function classifyRegion(location) {
+  const loc = (location || '').toLowerCase();
+  for (const { region, patterns } of REGION_MAP) {
+    if (patterns.some(p => loc.includes(p))) return region;
+  }
+  return 'Other';
+}
+
+module.exports.classifyRegion = classifyRegion;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -214,7 +245,7 @@ const TECH_KEYWORDS = [
 ];
 
 async function aggregateJobs(filters = {}) {
-  const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '', remote = true } = filters;
+  const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '', remote = true, region = '' } = filters;
 
   const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
@@ -278,6 +309,11 @@ async function aggregateJobs(filters = {}) {
     allJobs = allJobs.filter(job =>
       (job.job_type || '').toLowerCase().includes(jobType.toLowerCase())
     );
+  }
+
+  // Region filter — applied before dedup so we don't waste work
+  if (region) {
+    allJobs = allJobs.filter(job => (job.region || classifyRegion(job.location)) === region);
   }
 
   // Deduplicate
