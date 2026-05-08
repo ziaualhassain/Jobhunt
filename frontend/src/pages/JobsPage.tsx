@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog } from 'lucide-react'
+import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog, MapPin, X } from 'lucide-react'
 import SearchForm, { REGIONS } from '../components/SearchForm'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
@@ -11,6 +11,18 @@ import type { Job, SearchFilters } from '../types'
 
 type SortKey = 'default' | 'title' | 'company' | 'source'
 type Tab = 'curated' | 'browse'
+
+// ISO 3166-1 alpha-2 → our region tags
+const COUNTRY_TO_REGION: Record<string, string> = {
+  IN: 'India',
+  US: 'US', GB: 'UK', AE: 'UAE',
+  CA: 'Canada', AU: 'Australia', SG: 'Singapore',
+  DE: 'Europe', FR: 'Europe', NL: 'Europe', ES: 'Europe',
+  IT: 'Europe', SE: 'Europe', CH: 'Europe', PL: 'Europe',
+  BE: 'Europe', AT: 'Europe', DK: 'Europe', FI: 'Europe',
+  NO: 'Europe', IE: 'Europe', PT: 'Europe', CZ: 'Europe',
+  RO: 'Europe', HU: 'Europe', GR: 'Europe',
+}
 
 function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string>; onSave: (j: Job) => void }) {
   return (
@@ -57,10 +69,48 @@ export default function JobsPage() {
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
   const restoredRef = useRef(false)
 
+  // ── IP geolocation ──────────────────────────────────────────────────────────
+  const [detectedRegion, setDetectedRegion] = useState<string | null>(null)
+  const [detectedCity, setDetectedCity] = useState<string>('')
+  const [showGeoBanner, setShowGeoBanner] = useState(false)
+  const geoFetchedRef = useRef(false)
+
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
   const { data: applications } = useQuery({ queryKey: ['applications'], queryFn: () => getApplications() })
 
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
+
+  // Fire geo detection once profile loads and location is not yet set
+  useEffect(() => {
+    if (!profile || profile.preferences?.location || geoFetchedRef.current) return
+    if (sessionStorage.getItem('geo-banner-dismissed')) return
+    geoFetchedRef.current = true
+
+    fetch('https://ipapi.co/json/')
+      .then(r => r.json())
+      .then((data: { country_code?: string; city?: string; country_name?: string }) => {
+        const region = data.country_code ? COUNTRY_TO_REGION[data.country_code] : undefined
+        if (region) {
+          setDetectedRegion(region)
+          setDetectedCity(data.city || data.country_name || '')
+          setShowGeoBanner(true)
+        }
+      })
+      .catch(() => {}) // fail silently — VPNs, ad-blockers, rate limits
+  }, [profile])
+
+  function confirmGeoRegion() {
+    if (!detectedRegion) return
+    updateProfile({ preferences: { location: detectedRegion } })
+      .then(() => qc.invalidateQueries({ queryKey: ['profile'] }))
+      .catch(() => {})
+    setShowGeoBanner(false)
+  }
+
+  function dismissGeoBanner() {
+    sessionStorage.setItem('geo-banner-dismissed', '1')
+    setShowGeoBanner(false)
+  }
 
   // ── Curated: built from profile preferences ─────────────────────────────────
   const profileInterests = profile?.preferences?.interests ?? []
@@ -179,12 +229,51 @@ export default function JobsPage() {
     ...(profile?.preferences?.experienceLevel ? [profile.preferences.experienceLevel] : []),
   ]
 
+  const detectedRegionMeta = REGIONS.find(r => r.value === detectedRegion)
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-slate-100">Find Your Next Tech Role</h1>
         <p className="text-slate-500 text-sm mt-1">Remote tech jobs aggregated from RemoteOK, We Work Remotely, Himalayas &amp; more</p>
       </div>
+
+      {/* ── Geo detection banner ────────────────────────────────────────────── */}
+      {showGeoBanner && detectedRegion && (
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl">
+          <MapPin size={15} className="text-brand-400 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-slate-200 font-medium">
+              Looks like you're in {detectedRegionMeta?.flag} <span className="text-brand-300">{detectedRegion}</span>
+              {detectedCity ? <span className="text-slate-500 font-normal"> ({detectedCity})</span> : null}
+            </p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Set this as your preferred location to get curated jobs for your region.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={confirmGeoRegion}
+              className="px-3 py-1.5 rounded-lg bg-brand-500/20 text-brand-300 border border-brand-500/30 text-xs font-medium hover:bg-brand-500/30 transition-colors"
+            >
+              Yes, set {detectedRegion}
+            </button>
+            <button
+              onClick={() => { dismissGeoBanner(); navigate('/profile') }}
+              className="px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-400 border border-slate-700 text-xs font-medium hover:text-slate-200 transition-colors"
+            >
+              Change
+            </button>
+            <button
+              onClick={dismissGeoBanner}
+              className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-700 transition-colors"
+              aria-label="Dismiss"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Tab switcher ────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl w-fit">
@@ -218,7 +307,6 @@ export default function JobsPage() {
           {!profile ? (
             <SkeletonGrid />
           ) : !hasProfileData ? (
-            /* No profile preferences set */
             <div className="card p-8 text-center space-y-3">
               <UserCog size={36} className="mx-auto text-slate-600" />
               <div>
