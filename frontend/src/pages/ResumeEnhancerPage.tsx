@@ -944,7 +944,7 @@ export default function ResumeEnhancerPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
           <Sparkles size={22} className="text-brand-400" />
-          Resume Tools
+          Resume Tools (Alpha Version)
         </h1>
         <p className="text-slate-500 text-sm mt-1">
           Analyse & score your resume, rewrite it with AI, or build one from scratch

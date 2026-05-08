@@ -16,7 +16,15 @@ function formatSalary(min, max, currency = 'USD') {
   return '';
 }
 
-async function fetchPage(page) {
+// Countries to sync — each gets its own region tag in the DB
+const REGION_SYNCS = [
+  { code: 'IN', region: 'India',     pages: 12 },
+  { code: 'US', region: 'US',        pages: 8  },
+  { code: 'GB', region: 'UK',        pages: 6  },
+  { code: 'AE', region: 'UAE',       pages: 4  },
+];
+
+async function fetchPage(countryCode, page) {
   const res = await axios.post('https://api.theirstack.com/v1/jobs/search', {
     order_by: [
       { desc: true, field: 'date_posted' },
@@ -27,7 +35,7 @@ async function fetchPage(page) {
     posted_at_max_age_days: 30,
     blur_company_data: false,
     include_total_results: false,
-    job_country_code_or: ['IN'],
+    job_country_code_or: [countryCode],
     job_title_pattern_or: [
       'engineer', 'developer', 'software', 'data', 'cloud',
       'devops', 'fullstack', 'frontend', 'backend', 'architect',
@@ -62,26 +70,17 @@ async function fetchPage(page) {
   return res.data.data || [];
 }
 
-async function syncTheirStackJobs() {
-  if (!process.env.THEIRSTACK_API_KEY) {
-    console.log('[TheirStack] Skipping sync — THEIRSTACK_API_KEY not set');
-    return;
-  }
-  if (process.env.REFRESH_THEIRSTACK !== 'true') {
-    console.log('[TheirStack] Skipping sync — REFRESH_THEIRSTACK is not true (existing DB rows will still be served)');
-    return;
-  }
-
-  console.log('[TheirStack] Starting India job sync…');
+async function syncRegion({ code, region, pages }) {
+  console.log(`[TheirStack] Syncing ${region} (${code})…`);
   let synced = 0;
 
-  for (let page = 0; page < 12; page++) {
+  for (let page = 0; page < pages; page++) {
     let jobs;
     try {
-      jobs = await fetchPage(page);
+      jobs = await fetchPage(code, page);
     } catch (err) {
       const body = err.response?.data;
-      console.error(`[TheirStack] Page ${page} failed (${err.response?.status ?? 'network'}):`, body ?? err.message);
+      console.error(`[TheirStack/${region}] Page ${page} failed (${err.response?.status ?? 'network'}):`, body ?? err.message);
       break;
     }
     if (jobs.length === 0) break;
@@ -89,14 +88,14 @@ async function syncTheirStackJobs() {
     for (const job of jobs) {
       const jobId = `theirstack-${job.id}`;
       const url = job.url || job.job_url || '';
-      if (!url) continue; // skip jobs with no link
+      if (!url) continue;
 
       try {
         await pool.query(`
           INSERT INTO theirstack_jobs
             (job_id, title, company, location, url, description,
-             salary, job_type, tags, logo, date_posted, fetched_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+             salary, job_type, tags, logo, date_posted, region, fetched_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
           ON CONFLICT (job_id) DO UPDATE SET
             title       = EXCLUDED.title,
             company     = EXCLUDED.company,
@@ -107,12 +106,13 @@ async function syncTheirStackJobs() {
             tags        = EXCLUDED.tags,
             logo        = EXCLUDED.logo,
             date_posted = EXCLUDED.date_posted,
+            region      = EXCLUDED.region,
             fetched_at  = NOW()
         `, [
           jobId,
           job.name || job.title || '',
           job.company_name || job.company_object?.name || '',
-          job.location || 'India',
+          job.location || region,
           url,
           stripHtml(job.description || job.short_description || ''),
           formatSalary(job.salary_min, job.salary_max, job.salary_currency || 'USD'),
@@ -120,18 +120,41 @@ async function syncTheirStackJobs() {
           (job.technology_slugs || []).join(', '),
           job.company_object?.logo_url || '',
           job.date_posted || null,
+          region,
         ]);
         synced++;
       } catch (err) {
-        console.error(`[TheirStack] Upsert failed for ${jobId}:`, err.message);
+        console.error(`[TheirStack/${region}] Upsert failed for ${jobId}:`, err.message);
       }
     }
 
-    console.log(`[TheirStack] Page ${page}: ${jobs.length} jobs`);
+    console.log(`[TheirStack/${region}] Page ${page}: ${jobs.length} jobs`);
     if (jobs.length < 25) break;
   }
 
-  console.log(`[TheirStack] Sync complete — ${synced} jobs stored`);
+  return synced;
+}
+
+async function syncTheirStackJobs() {
+  if (!process.env.THEIRSTACK_API_KEY) {
+    console.log('[TheirStack] Skipping sync — THEIRSTACK_API_KEY not set');
+    return;
+  }
+  if (process.env.REFRESH_THEIRSTACK !== 'true') {
+    console.log('[TheirStack] Skipping sync — REFRESH_THEIRSTACK is not true (existing DB rows will still be served)');
+    return;
+  }
+
+  let total = 0;
+  for (const config of REGION_SYNCS) {
+    try {
+      const synced = await syncRegion(config);
+      total += synced;
+    } catch (err) {
+      console.error(`[TheirStack] Region ${config.region} sync error:`, err.message);
+    }
+  }
+  console.log(`[TheirStack] Full sync complete — ${total} jobs stored across all regions`);
 }
 
 function startTheirStackSync() {

@@ -4,8 +4,9 @@ import {
   Target, Trash2, CheckCircle2, Circle, ChevronDown, ChevronUp,
   Loader2, Upload, Flame, Clock, Sparkles, X,
   TrendingUp, AlertCircle, ExternalLink, BookOpen, ChevronLeft, ChevronRight,
-  MessageCircle, Send, Bot, User,
+  MessageCircle, Send, Bot, User, Download,
 } from 'lucide-react'
+import Markdown from '../components/Markdown'
 import {
   listPrepPlans, getPrepPlan, generatePrepPlan, uploadPrepPlan,
   deletePrepPlan, togglePrepTask, checkInToday,
@@ -211,8 +212,67 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
     sendMutation.mutate(text)
   }
 
+  function handleSummarise() {
+    if (isSending) return
+    sendMutation.mutate(
+      'Please summarise everything we have discussed so far into beautiful, well-structured revision notes. ' +
+      'Use this format:\n' +
+      '1. A short **Objective** sentence explaining what this topic is about.\n' +
+      '2. **Key Concepts** — a section with bolded terms and clear one-line explanations.\n' +
+      '3. **How It Works** — numbered steps or a structured walkthrough of the main ideas.\n' +
+      '4. **Code / Examples** — any relevant snippets or concrete examples (if applicable).\n' +
+      '5. **Common Pitfalls** — things to watch out for or mistakes beginners make.\n' +
+      '6. **Key Takeaways** — 3–5 bullet points a candidate should remember before an interview.\n\n' +
+      'Keep the language clear and concise. Make it genuinely useful for a quick review the night before an interview.'
+    )
+  }
+
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+  }
+
+  function downloadNotes() {
+    if (messages.length === 0) return
+
+    const date = new Date().toLocaleDateString('en-US', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    })
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+    const bar  = '═'.repeat(64)
+    const dash = '─'.repeat(64)
+
+    const lines: string[] = [
+      bar,
+      '  REVISION NOTES',
+      `  ${task.title}`,
+      bar,
+      '',
+      `  Category : ${task.category}`,
+      `  Generated: ${date} at ${time}`,
+    ]
+    if (task.description) {
+      lines.push('', `  ${task.description}`)
+    }
+    lines.push('', dash, '')
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i]
+      const label = msg.role === 'user' ? '[ YOU ]' : '[ AI COACH ]'
+      lines.push(label, msg.content.trim())
+      if (i < messages.length - 1) lines.push('', dash, '')
+    }
+
+    lines.push('', bar)
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `revision_notes_${task.title.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -227,7 +287,17 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
             <p className="text-sm font-semibold text-slate-200 truncate">{task.title}</p>
             <p className="text-[10px] text-slate-500">AI tutor · history saved automatically</p>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300">
+          {messages.length > 0 && (
+            <button
+              onClick={downloadNotes}
+              title="Download as revision_notes.txt"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-700 transition-colors"
+            >
+              <Download size={13} strokeWidth={2} />
+              <span className="hidden sm:inline">Save Notes</span>
+            </button>
+          )}
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 ml-1">
             <X size={17} />
           </button>
         </div>
@@ -243,19 +313,19 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
           {messages.map((msg) => (
             <div key={msg.id} className={`flex items-start gap-2.5 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
               <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
-                msg.role === 'user' ? 'bg-brand-500/30' : 'bg-slate-700'
+                msg.role === 'user' ? 'bg-brand-100 dark:bg-brand-500/30' : 'bg-slate-800 dark:bg-slate-700'
               }`}>
                 {msg.role === 'user'
-                  ? <User size={13} className="text-brand-300" />
-                  : <Bot size={13} className="text-slate-300" />
+                  ? <User size={13} className="text-brand-700 dark:text-brand-300" />
+                  : <Bot size={13} className="text-slate-500 dark:text-slate-300" />
                 }
               </div>
-              <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+              <div className={`max-w-[82%] px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
                 msg.role === 'user'
-                  ? 'bg-brand-500/20 text-brand-100 rounded-tr-sm'
-                  : 'bg-slate-800 text-slate-200 rounded-tl-sm'
+                  ? 'bg-brand-100 dark:bg-brand-500/20 text-brand-900 dark:text-brand-100 rounded-tr-sm whitespace-pre-wrap'
+                  : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700 dark:border-transparent'
               }`}>
-                {msg.content}
+                {msg.role === 'user' ? msg.content : <Markdown content={msg.content} />}
               </div>
             </div>
           ))}
@@ -289,6 +359,19 @@ function TaskChatModal({ task, onClose }: { task: PrepTask; onClose: () => void 
 
         {/* Input */}
         <div className="border-t border-slate-800 p-3 shrink-0">
+          {messages.length > 0 && (
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                type="button"
+                onClick={handleSummarise}
+                disabled={isSending}
+                className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border border-brand-500/40 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20 hover:text-brand-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Sparkles size={11} strokeWidth={2} />
+                Summarise conversation
+              </button>
+            </div>
+          )}
           <div className="flex items-end gap-2">
             <textarea
               ref={inputRef}

@@ -75,6 +75,7 @@ export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ job
   if (filters.jobType) params.jobType = filters.jobType;
   if (filters.experienceLevel) params.experienceLevel = filters.experienceLevel;
   if (filters.remote !== undefined) params.remote = String(filters.remote);
+  if (filters.region) params.region = filters.region;
   const res = await api.get('/jobs/search', { params });
   return res.data;
 }
