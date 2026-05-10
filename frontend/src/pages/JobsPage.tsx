@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog, MapPin, X } from 'lucide-react'
 import SearchForm, { REGIONS } from '../components/SearchForm'
+import { PERCENTAGE_ENABLE } from '../lib/config'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
@@ -75,7 +76,7 @@ export default function JobsPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('curated')
   const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
-  const [sort, setSort] = useState<SortKey>('default')
+  const [sort, setSort] = useState<SortKey>(PERCENTAGE_ENABLE ? 'match' : 'default')
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
@@ -256,10 +257,15 @@ export default function JobsPage() {
   if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
   else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
   else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))
-  else if (sort === 'match' && resumeAnalysis)
+  else if (sort === 'match' || (PERCENTAGE_ENABLE && effectiveAnalysis && sort === 'default'))
     browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
 
-  const curatedJobs = curatedData?.jobs ?? []
+  // For You always sorted highest → lowest match when percentage feature is on
+  const curatedJobs = PERCENTAGE_ENABLE && effectiveAnalysis
+    ? [...(curatedData?.jobs ?? [])].sort(
+        (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
+      )
+    : (curatedData?.jobs ?? [])
 
   // Chips showing which profile attributes drive the curated feed
   const expChip = effectiveExperienceLevel
@@ -456,7 +462,7 @@ export default function JobsPage() {
                   value={sort}
                   onChange={e => setSort(e.target.value as SortKey)}
                 >
-                  {resumeAnalysis && <option value="match">Sort: Best Match</option>}
+                  {PERCENTAGE_ENABLE && effectiveAnalysis && <option value="match">Sort: Best Match</option>}
                   <option value="default">Sort: Default</option>
                   <option value="title">Sort: Title</option>
                   <option value="company">Sort: Company</option>

@@ -7,6 +7,7 @@ import { scoreColor, scoreLabel } from '../lib/jobScorer'
 import type { ResumeAnalysis } from '../lib/api'
 import { deepScoreJob } from '../lib/api'
 import type { DeepScore } from '../lib/api'
+import { PERCENTAGE_ENABLE } from '../lib/config'
 
 const SOURCE_COLORS: Record<string, string> = {
   RemoteOK:           'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800',
@@ -79,7 +80,7 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
 
             {/* Badges: fit score + source */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {displayScore && (
+              {PERCENTAGE_ENABLE && displayScore && (
                 <button
                   type="button"
                   onClick={() => setScoreOpen(v => !v)}
@@ -134,7 +135,7 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           )}
 
           {/* ── Fit score breakdown panel ─────────────────────────────────── */}
-          {fitScore && scoreOpen && (
+          {PERCENTAGE_ENABLE && fitScore && scoreOpen && (
             <div className="mt-3 rounded-xl border border-slate-700/60 bg-slate-800/40 p-3 space-y-3">
               <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Resume fit breakdown</p>
 
