@@ -173,12 +173,7 @@ export default function JobsPage() {
     }
   }, [profile])
 
-  const browseFilters: Partial<SearchFilters> = filters ?? {
-    tags: profileInterests,
-    keywords: profileKeywords,
-    experienceLevel: profile?.preferences?.experienceLevel ?? '',
-    remote: profile?.preferences?.remote ?? true,
-  }
+  const browseFilters: Partial<SearchFilters> = filters ?? {}
 
   const { data: browseData, isLoading: browseLoading, isError, error } = useQuery({
     queryKey: ['jobs', browseFilters],

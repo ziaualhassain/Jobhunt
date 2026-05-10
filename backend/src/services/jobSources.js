@@ -292,7 +292,7 @@ async function aggregateJobs(filters = {}) {
     if (loc && remote)   return matchesLoc || isRemote; // city + remote ON: either
     if (loc && !remote)  return matchesLoc;              // city + remote OFF: city only
     if (!loc && remote)  return isRemote;                // no city + remote ON: remote only
-    /* !loc && !remote */return !isRemote;               // no city + remote OFF: non-remote only
+    /* !loc && !remote */return true;                    // no constraint: show all
   });
 
   // Experience level filter — match against title and description
