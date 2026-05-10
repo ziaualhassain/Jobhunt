@@ -129,6 +129,19 @@ export default function JobsPage() {
   const profileKeywords = profile?.preferences?.keywords ?? []
   const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
 
+  // Map years of experience → seniority label when user hasn't picked one explicitly
+  function deriveExperienceLevel(years: number): string {
+    if (years <= 2) return 'Junior'
+    if (years <= 5) return 'Mid-level'
+    if (years <= 9) return 'Senior'
+    if (years <= 14) return 'Lead'
+    return 'Staff'
+  }
+
+  const profileYears = profile?.preferences?.yearsOfExperience
+  const effectiveExperienceLevel = profile?.preferences?.experienceLevel ||
+    (profileYears != null ? deriveExperienceLevel(profileYears) : '')
+
   // Map free-text profile location → normalised region tag
   function deriveRegion(): string {
     const loc = (profile?.preferences?.location ?? '').toLowerCase()
@@ -151,11 +164,25 @@ export default function JobsPage() {
   const curatedFilters: Partial<SearchFilters> = {
     tags: profileInterests,
     keywords: profileKeywords,
-    experienceLevel: profile?.preferences?.experienceLevel ?? '',
+    experienceLevel: effectiveExperienceLevel,
     jobType: profile?.preferences?.jobType ?? '',
     region: profileRegion,
     remote: profile?.preferences?.remote ?? true,
   }
+
+  // Build a ResumeAnalysis-compatible object from profile data so fit scores
+  // show on For You cards even when no resume has been uploaded.
+  const ROLE_TAGS = new Set(['Frontend', 'Backend', 'Full Stack', 'DevOps', 'Mobile', 'Data Engineer', 'ML / AI', 'QA', 'Platform Engineer', 'SRE'])
+  const CLOUD_TAGS = new Set(['AWS', 'Azure', 'GCP'])
+  const profileAsAnalysis: ResumeAnalysis | null = profile && hasProfileData ? {
+    skills: [...profileInterests, ...profileKeywords],
+    experienceLevel: effectiveExperienceLevel || 'Mid-level',
+    yearsOfExperience: profileYears ?? 0,
+    jobTitles: profileInterests.filter(i => ROLE_TAGS.has(i)),
+    searchKeywords: profileKeywords,
+    cloudPlatforms: profileInterests.filter(i => CLOUD_TAGS.has(i)),
+    summary: '',
+  } : null
 
   const { data: curatedData, isLoading: curatedLoading } = useQuery({
     queryKey: ['jobs', 'curated', curatedFilters],
@@ -216,12 +243,14 @@ export default function JobsPage() {
   }
 
   // ── Fit scores ───────────────────────────────────────────────────────────────
-  // Computed client-side from the resume analysis, zero extra API calls.
+  // Resume upload takes priority; fall back to profile-derived analysis so For
+  // You cards show badges without requiring a resume.
+  const effectiveAnalysis = resumeAnalysis ?? profileAsAnalysis
   const fitScores = useMemo<Map<string, FitScore>>(() => {
-    if (!resumeAnalysis) return new Map()
+    if (!effectiveAnalysis) return new Map()
     const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
-    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, resumeAnalysis)]))
-  }, [resumeAnalysis, browseData, curatedData])
+    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis)]))
+  }, [effectiveAnalysis, browseData, curatedData])
 
   const browseJobs = [...(browseData?.jobs ?? [])]
   if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
@@ -233,10 +262,15 @@ export default function JobsPage() {
   const curatedJobs = curatedData?.jobs ?? []
 
   // Chips showing which profile attributes drive the curated feed
+  const expChip = effectiveExperienceLevel
+    ? profileYears != null && !profile?.preferences?.experienceLevel
+      ? `${effectiveExperienceLevel} (${profileYears}y)`
+      : effectiveExperienceLevel
+    : null
   const matchChips: string[] = [
     ...(profileRegion ? [profileRegion] : []),
     ...profileInterests.slice(0, 4),
-    ...(profile?.preferences?.experienceLevel ? [profile.preferences.experienceLevel] : []),
+    ...(expChip ? [expChip] : []),
   ]
 
   const detectedRegionMeta = REGIONS.find(r => r.value === detectedRegion)
@@ -371,7 +405,7 @@ export default function JobsPage() {
                   <p className="text-sm text-slate-500">
                     <span className="text-slate-200 font-medium">{curatedData?.total ?? curatedJobs.length}</span> jobs curated for you
                   </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={resumeAnalysis} />
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
                 </>
               )}
             </>
@@ -455,7 +489,7 @@ export default function JobsPage() {
           )}
 
           {!browseLoading && browseJobs.length > 0 && (
-            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={resumeAnalysis} />
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
           )}
         </div>
       )}
