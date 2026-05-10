@@ -29,6 +29,7 @@ export default function ProfilePage() {
   const [interests, setInterests] = useState<string[]>([])
   const [keywords, setKeywords] = useState('')
   const [experienceLevel, setExperienceLevel] = useState('')
+  const [yearsOfExperience, setYearsOfExperience] = useState<string>('')
   const [jobType, setJobType] = useState('')
   const [location, setLocation] = useState('')
   const [remote, setRemote] = useState(true)
@@ -46,6 +47,7 @@ export default function ProfilePage() {
     setInterests(profile.preferences?.interests ?? [])
     setKeywords((profile.preferences?.keywords ?? []).join(', '))
     setExperienceLevel(profile.preferences?.experienceLevel ?? '')
+    setYearsOfExperience(profile.preferences?.yearsOfExperience != null ? String(profile.preferences.yearsOfExperience) : '')
     setJobType(profile.preferences?.jobType ?? '')
     setLocation(profile.preferences?.location ?? '')
     setRemote(profile.preferences?.remote ?? true)
@@ -78,6 +80,7 @@ export default function ProfilePage() {
         interests,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
         experienceLevel,
+        yearsOfExperience: yearsOfExperience ? Number(yearsOfExperience) : undefined,
         jobType,
         location,
         remote,
@@ -253,6 +256,18 @@ export default function ProfilePage() {
                 <option value="">Any</option>
                 {EXPERIENCE_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Years of experience</label>
+              <input
+                type="number"
+                className="input w-full"
+                placeholder="e.g. 5"
+                min={0}
+                max={50}
+                value={yearsOfExperience}
+                onChange={e => setYearsOfExperience(e.target.value)}
+              />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">Job type</label>

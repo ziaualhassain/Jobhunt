@@ -39,6 +39,7 @@ export interface UserPreferences {
   interests: string[]
   keywords: string[]
   experienceLevel: string
+  yearsOfExperience?: number
   remote: boolean
   location: string
   jobType: string
@@ -78,6 +79,19 @@ export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ job
   if (filters.region) params.region = filters.region;
   const res = await api.get('/jobs/search', { params });
   return res.data;
+}
+
+export interface DeepScore {
+  score: number
+  matched_skills: string[]
+  skill_gaps: string[]
+  seniority_fit: string
+  reasoning: string
+}
+
+export async function deepScoreJob(analysis: ResumeAnalysis, job: Job): Promise<DeepScore> {
+  const res = await api.post('/jobs/deep-score', { analysis, job })
+  return res.data
 }
 
 // ── Applications ──────────────────────────────────────────────────────────────

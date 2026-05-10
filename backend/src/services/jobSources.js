@@ -292,7 +292,7 @@ async function aggregateJobs(filters = {}) {
     if (loc && remote)   return matchesLoc || isRemote; // city + remote ON: either
     if (loc && !remote)  return matchesLoc;              // city + remote OFF: city only
     if (!loc && remote)  return isRemote;                // no city + remote ON: remote only
-    /* !loc && !remote */return !isRemote;               // no city + remote OFF: non-remote only
+    /* !loc && !remote */return true;                    // no constraint: show all
   });
 
   // Experience level filter — match against title and description
@@ -318,7 +318,8 @@ async function aggregateJobs(filters = {}) {
   if (region && region !== 'Remote') {
     allJobs = allJobs.filter(job => {
       const jobRegion = job.region || classifyRegion(job.location);
-      return jobRegion === region || jobRegion === 'Remote';
+      // Include Remote jobs alongside the selected country only when remote is enabled.
+      return jobRegion === region || (remote !== false && jobRegion === 'Remote');
     });
   } else if (region === 'Remote') {
     allJobs = allJobs.filter(job => (job.region || classifyRegion(job.location)) === 'Remote');

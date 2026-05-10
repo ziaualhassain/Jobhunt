@@ -50,7 +50,7 @@ export default function SearchForm({ onSearch, onClear, loading, initialFilters 
   const [jobType, setJobType] = useState(initialFilters?.jobType ?? '')
   const [experienceLevel, setExperienceLevel] = useState(initialFilters?.experienceLevel ?? '')
   const [location, setLocation] = useState(initialFilters?.location ?? '')
-  const [remote, setRemote] = useState(initialFilters?.remote ?? true)
+  const [remote, setRemote] = useState(initialFilters?.remote ?? false)
   const [showFilters, setShowFilters] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 

@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const axios = require('axios');
+const Anthropic = require('@anthropic-ai/sdk');
 const { aggregateJobs } = require('../services/jobSources');
 const { pool } = require('../db/database');
 
@@ -140,6 +142,102 @@ router.get('/search', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch jobs' });
+  }
+});
+
+// ── POST /api/jobs/deep-score ────────────────────────────────────────────────
+// AI-powered resume ↔ JD scoring via Ollama or Claude.
+// Body: { analysis: ResumeAnalysis, job: { title, company, description, tags } }
+
+const DEEP_SCORE_SYSTEM = `You are an expert technical recruiter. Given a candidate profile and a job description, score the fit precisely and honestly.
+Return ONLY valid JSON — no markdown fences, no extra text.`;
+
+function buildDeepScorePrompt(analysis, job) {
+  return `CANDIDATE PROFILE:
+Skills: ${analysis.skills?.join(', ') || 'not provided'}
+Experience Level: ${analysis.experienceLevel || 'unknown'} (${analysis.yearsOfExperience || '?'} years)
+Best-fit roles: ${analysis.jobTitles?.join(', ') || 'not provided'}
+Summary: ${analysis.summary || ''}
+
+JOB: ${job.title} at ${job.company || 'Unknown Company'}
+Required skills/tags: ${job.tags || 'not listed'}
+Description: ${(job.description || '').slice(0, 1200)}
+
+Score this candidate's fit and return ONLY this JSON:
+{
+  "score": <integer 0-100>,
+  "matched_skills": ["skills from candidate that match the JD"],
+  "skill_gaps": ["skills the JD needs that the candidate lacks"],
+  "seniority_fit": "one sentence on experience level match",
+  "reasoning": "2-3 sentence honest assessment of overall fit"
+}`;
+}
+
+async function deepScoreWithOllama(analysis, job) {
+  const model = process.env.OLLAMA_MODEL || 'llama3.2';
+  const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
+  const res = await axios.post(`${baseUrl}/api/chat`, {
+    model,
+    format: 'json',
+    stream: false,
+    messages: [
+      { role: 'system', content: DEEP_SCORE_SYSTEM },
+      { role: 'user', content: buildDeepScorePrompt(analysis, job) },
+    ],
+    options: { temperature: 0.1 },
+  }, { timeout: 60_000 });
+  const raw = res.data?.message?.content;
+  if (!raw) throw new Error('Empty Ollama response');
+  return JSON.parse(raw);
+}
+
+async function deepScoreWithClaude(analysis, job) {
+  const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const schema = {
+    type: 'object',
+    properties: {
+      score:          { type: 'number' },
+      matched_skills: { type: 'array', items: { type: 'string' } },
+      skill_gaps:     { type: 'array', items: { type: 'string' } },
+      seniority_fit:  { type: 'string' },
+      reasoning:      { type: 'string' },
+    },
+    required: ['score', 'matched_skills', 'skill_gaps', 'seniority_fit', 'reasoning'],
+    additionalProperties: false,
+  };
+  const response = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 512,
+    system: [{ type: 'text', text: DEEP_SCORE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: buildDeepScorePrompt(analysis, job) }],
+    output_config: { format: { type: 'json_schema', json_schema: { name: 'deep_score', schema } } },
+  });
+  const textBlock = response.content.find(b => b.type === 'text');
+  return JSON.parse(textBlock.text);
+}
+
+router.post('/deep-score', async (req, res) => {
+  try {
+    const { analysis, job } = req.body;
+    if (!analysis || !job) return res.status(400).json({ error: 'analysis and job are required' });
+
+    let result;
+
+    // Try Ollama first (free, local), fall back to Claude
+    try {
+      await axios.get(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { timeout: 2000 });
+      result = await deepScoreWithOllama(analysis, job);
+    } catch {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return res.status(503).json({ error: 'No AI backend available. Run Ollama locally or set ANTHROPIC_API_KEY.' });
+      }
+      result = await deepScoreWithClaude(analysis, job);
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[DeepScore]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
