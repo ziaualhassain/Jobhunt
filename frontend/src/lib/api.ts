@@ -80,6 +80,19 @@ export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ job
   return res.data;
 }
 
+export interface DeepScore {
+  score: number
+  matched_skills: string[]
+  skill_gaps: string[]
+  seniority_fit: string
+  reasoning: string
+}
+
+export async function deepScoreJob(analysis: ResumeAnalysis, job: Job): Promise<DeepScore> {
+  const res = await api.post('/jobs/deep-score', { analysis, job })
+  return res.data
+}
+
 // ── Applications ──────────────────────────────────────────────────────────────
 
 export async function getApplications(status?: ApplicationStatus): Promise<Application[]> {

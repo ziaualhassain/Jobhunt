@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog, MapPin, X } from 'lucide-react'
@@ -8,8 +8,10 @@ import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
+import { scoreJob } from '../lib/jobScorer'
+import type { FitScore } from '../lib/jobScorer'
 
-type SortKey = 'default' | 'title' | 'company' | 'source'
+type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
 type Tab = 'curated' | 'browse'
 
 // ISO 3166-1 alpha-2 → our region tags
@@ -24,7 +26,15 @@ const COUNTRY_TO_REGION: Record<string, string> = {
   RO: 'Europe', HU: 'Europe', GR: 'Europe',
 }
 
-function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string>; onSave: (j: Job) => void }) {
+function JobGrid({
+  jobs, savedIds, onSave, scores, resumeAnalysis,
+}: {
+  jobs: Job[]
+  savedIds: Set<string>
+  onSave: (j: Job) => void
+  scores?: Map<string, FitScore>
+  resumeAnalysis?: ResumeAnalysis | null
+}) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {jobs.map(job => (
@@ -33,6 +43,8 @@ function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string
           job={job}
           isSaved={savedIds.has(job.job_id)}
           onSave={onSave}
+          fitScore={scores?.get(job.job_id)}
+          resumeAnalysis={resumeAnalysis}
         />
       ))}
     </div>
@@ -67,6 +79,7 @@ export default function JobsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
+  const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null)
   const restoredRef = useRef(false)
 
   // ── IP geolocation ──────────────────────────────────────────────────────────
@@ -203,6 +216,7 @@ export default function JobsPage() {
   }
 
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
+    setResumeAnalysis(analysis)
     const f: Partial<SearchFilters> = {
       keywords: analysis.searchKeywords,
       tags: [],
@@ -215,10 +229,20 @@ export default function JobsPage() {
     showToast(`Searching ${analysis.searchKeywords.length} keywords from your resume`)
   }
 
+  // ── Fit scores ───────────────────────────────────────────────────────────────
+  // Computed client-side from the resume analysis, zero extra API calls.
+  const fitScores = useMemo<Map<string, FitScore>>(() => {
+    if (!resumeAnalysis) return new Map()
+    const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
+    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, resumeAnalysis)]))
+  }, [resumeAnalysis, browseData, curatedData])
+
   const browseJobs = [...(browseData?.jobs ?? [])]
-  if (sort === 'title') browseJobs.sort((a, b) => a.title.localeCompare(b.title))
+  if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
   else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
-  else if (sort === 'source') browseJobs.sort((a, b) => a.source.localeCompare(b.source))
+  else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))
+  else if (sort === 'match' && resumeAnalysis)
+    browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
 
   const curatedJobs = curatedData?.jobs ?? []
 
@@ -361,7 +385,7 @@ export default function JobsPage() {
                   <p className="text-sm text-slate-500">
                     <span className="text-slate-200 font-medium">{curatedData?.total ?? curatedJobs.length}</span> jobs curated for you
                   </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={resumeAnalysis} />
                 </>
               )}
             </>
@@ -412,6 +436,7 @@ export default function JobsPage() {
                   value={sort}
                   onChange={e => setSort(e.target.value as SortKey)}
                 >
+                  {resumeAnalysis && <option value="match">Sort: Best Match</option>}
                   <option value="default">Sort: Default</option>
                   <option value="title">Sort: Title</option>
                   <option value="company">Sort: Company</option>
@@ -444,7 +469,7 @@ export default function JobsPage() {
           )}
 
           {!browseLoading && browseJobs.length > 0 && (
-            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={resumeAnalysis} />
           )}
         </div>
       )}
