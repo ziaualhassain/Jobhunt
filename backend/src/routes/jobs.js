@@ -59,12 +59,6 @@ async function getTheirStackJobs(filters) {
     }
   }
 
-  if (experienceLevel) {
-    params.push(`%${experienceLevel.toLowerCase()}%`);
-    const i = params.length;
-    conditions.push(`(LOWER(title) LIKE $${i} OR LOWER(description) LIKE $${i})`);
-  }
-
   if (jobType) {
     params.push(`%${jobType.toLowerCase()}%`);
     conditions.push(`LOWER(job_type) LIKE $${params.length}`);

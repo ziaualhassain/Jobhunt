@@ -140,7 +140,63 @@ async function fetchArbeitNow(keywords) {
   }
 }
 
-// ─── Region classification ────────────────────────────────────────────────────
+// Remotive – free public API, no key needed
+async function fetchRemotive(keywords) {
+  try {
+    const query = apiSearchTerms(keywords);
+    const res = await axios.get('https://remotive.com/api/remote-jobs', {
+      params: { search: query, limit: 100 },
+      timeout: 12000,
+    });
+    return (res.data.jobs || []).map(job => ({
+      job_id:      `remotive-${job.id}`,
+      title:       job.title,
+      company:     job.company_name,
+      location:    job.candidate_required_location || 'Remote',
+      region:      'Remote',
+      url:         job.url,
+      description: stripHtml(job.description || ''),
+      salary:      job.salary || '',
+      job_type:    job.job_type || 'Full-time',
+      source:      'Remotive',
+      tags:        (job.tags || []).join(', '),
+      logo:        job.company_logo || '',
+    }));
+  } catch (err) {
+    console.error('[Remotive] fetch failed:', err.message);
+    return [];
+  }
+}
+
+// Jobicy – free public API, no key needed
+async function fetchJobicy(keywords) {
+  try {
+    const tag = apiSearchTerms(keywords).split(' ')[0] || 'developer';
+    const res = await axios.get('https://jobicy.com/api/v2/remote-jobs', {
+      params: { count: 50, tag },
+      timeout: 12000,
+    });
+    return (res.data.jobs || []).map(job => ({
+      job_id:      `jobicy-${job.id}`,
+      title:       job.jobTitle,
+      company:     job.companyName,
+      location:    job.jobGeo || 'Remote',
+      region:      classifyRegion(job.jobGeo || 'Remote'),
+      url:         job.url,
+      description: stripHtml(job.jobDescription || ''),
+      salary:      job.jobSalary || '',
+      job_type:    job.jobType || 'Full-time',
+      source:      'Jobicy',
+      tags:        (job.jobIndustry || []).join(', '),
+      logo:        job.companyLogo || '',
+    }));
+  } catch (err) {
+    console.error('[Jobicy] fetch failed:', err.message);
+    return [];
+  }
+}
+
+
 
 const REGION_MAP = [
   { region: 'Remote',    patterns: ['remote', 'anywhere', 'worldwide', 'global', 'international'] },
@@ -249,35 +305,34 @@ async function aggregateJobs(filters = {}) {
 
   const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
 
-  const [remoteOK, wwr, himalayas, arbeitNow] = await Promise.allSettled([
+  const [remoteOK, wwr, himalayas, arbeitNow, remotive, jobicy] = await Promise.allSettled([
     fetchRemoteOK(searchKeywords, tags),
     fetchWeWorkRemotely(),
     fetchHimalayas(searchKeywords),
     fetchArbeitNow(searchKeywords),
+    fetchRemotive(searchKeywords),
+    fetchJobicy(searchKeywords),
   ]);
 
   let allJobs = [
-    ...(remoteOK.status === 'fulfilled' ? remoteOK.value : []),
-    ...(wwr.status === 'fulfilled' ? wwr.value : []),
+    ...(remoteOK.status  === 'fulfilled' ? remoteOK.value  : []),
+    ...(wwr.status       === 'fulfilled' ? wwr.value       : []),
     ...(himalayas.status === 'fulfilled' ? himalayas.value : []),
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
+    ...(remotive.status  === 'fulfilled' ? remotive.value  : []),
+    ...(jobicy.status    === 'fulfilled' ? jobicy.value    : []),
   ];
 
-  // Keyword filter — word-level match, OR across keywords, AND across words within a keyword
-  if (keywords.length > 0) {
+  // Combined keyword + tag filter (OR between the two so a job needs to satisfy either,
+  // not both — this prevents double-filtering that cuts too many valid results).
+  if (keywords.length > 0 || tags.length > 0) {
     allJobs = allJobs.filter(job => {
       const text = `${job.title} ${job.company} ${job.description} ${job.tags} ${job.location}`;
-      return matchesKeywords(text, keywords);
-    });
-  }
-
-  // Tag filter — each tag is split into words (AND), tags are OR-ed
-  if (tags.length > 0) {
-    allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.tags} ${job.description}`.toLowerCase();
-      return tags.some(tag =>
-        tag.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 1).every(w => text.includes(w))
+      const kwMatch  = keywords.length === 0 || matchesKeywords(text, keywords);
+      const tagMatch = tags.length === 0 || tags.some(tag =>
+        tag.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 1).every(w => text.toLowerCase().includes(w))
       );
+      return kwMatch || tagMatch;
     });
   }
 
@@ -294,15 +349,6 @@ async function aggregateJobs(filters = {}) {
     if (!loc && remote)  return isRemote;                // no city + remote ON: remote only
     /* !loc && !remote */return true;                    // no constraint: show all
   });
-
-  // Experience level filter — match against title and description
-  if (experienceLevel) {
-    const level = experienceLevel.toLowerCase();
-    allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.description}`.toLowerCase();
-      return text.includes(level);
-    });
-  }
 
   // Job type filter
   if (jobType) {
