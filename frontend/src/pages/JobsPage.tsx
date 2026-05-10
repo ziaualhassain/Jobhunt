@@ -143,32 +143,58 @@ export default function JobsPage() {
   const effectiveExperienceLevel = profile?.preferences?.experienceLevel ||
     (profileYears != null ? deriveExperienceLevel(profileYears) : '')
 
-  // Map free-text profile location → normalised region tag
-  function deriveRegion(): string {
-    const loc = (profile?.preferences?.location ?? '').toLowerCase()
-    const isRemote = profile?.preferences?.remote ?? true
-    if (!loc && isRemote) return 'Remote'
-    if (loc.includes('remote')) return 'Remote'
-    if (loc.includes('india')) return 'India'
-    if (loc.includes('us') || loc.includes('usa') || loc.includes('united states') || loc.includes('america')) return 'US'
-    if (loc.includes('uk') || loc.includes('united kingdom') || loc.includes('london') || loc.includes('england')) return 'UK'
-    if (loc.includes('uae') || loc.includes('dubai') || loc.includes('united arab')) return 'UAE'
-    if (loc.includes('canada') || loc.includes('toronto') || loc.includes('vancouver')) return 'Canada'
-    if (loc.includes('australia') || loc.includes('sydney') || loc.includes('melbourne')) return 'Australia'
-    if (loc.includes('europe') || loc.includes('germany') || loc.includes('france') || loc.includes('netherlands')) return 'Europe'
-    if (loc.includes('singapore')) return 'Singapore'
+  // Pure country/region names that are NOT cities — don't pass as location filter
+  const PURE_REGIONS = new Set([
+    'remote', 'anywhere', 'worldwide', 'global', 'international',
+    'india', 'us', 'usa', 'united states', 'america',
+    'uk', 'united kingdom', 'uae', 'united arab emirates',
+    'canada', 'australia', 'europe', 'singapore',
+  ])
+
+  // Extract a city name from a free-text location, e.g.
+  // "Hyderabad, India" → "Hyderabad"   "India" → ""   "Remote" → ""
+  function extractCity(raw: string): string {
+    if (!raw) return ''
+    const city = raw.split(',')[0].trim()
+    return PURE_REGIONS.has(city.toLowerCase()) ? '' : city
+  }
+
+  // Map profile location → normalised region tag
+  function deriveRegion(loc: string): string {
+    const l = loc.toLowerCase()
+    if (l.includes('remote')) return 'Remote'
+    if (l.includes('india') || l.includes('bangalore') || l.includes('bengaluru') ||
+        l.includes('hyderabad') || l.includes('mumbai') || l.includes('delhi') ||
+        l.includes('pune') || l.includes('chennai') || l.includes('kolkata') ||
+        l.includes('noida') || l.includes('gurgaon') || l.includes('gurugram')) return 'India'
+    if (l.includes('us') || l.includes('usa') || l.includes('united states') || l.includes('america') ||
+        l.includes('new york') || l.includes('san francisco') || l.includes('seattle') ||
+        l.includes('boston') || l.includes('austin') || l.includes('chicago')) return 'US'
+    if (l.includes('uk') || l.includes('united kingdom') || l.includes('london') ||
+        l.includes('manchester') || l.includes('birmingham') || l.includes('edinburgh')) return 'UK'
+    if (l.includes('uae') || l.includes('dubai') || l.includes('abu dhabi') || l.includes('united arab')) return 'UAE'
+    if (l.includes('canada') || l.includes('toronto') || l.includes('vancouver') || l.includes('montreal')) return 'Canada'
+    if (l.includes('australia') || l.includes('sydney') || l.includes('melbourne') || l.includes('brisbane')) return 'Australia'
+    if (l.includes('europe') || l.includes('germany') || l.includes('berlin') || l.includes('france') ||
+        l.includes('paris') || l.includes('netherlands') || l.includes('amsterdam') ||
+        l.includes('sweden') || l.includes('switzerland') || l.includes('spain') || l.includes('poland')) return 'Europe'
+    if (l.includes('singapore')) return 'Singapore'
     return ''
   }
 
-  const profileRegion = profile ? deriveRegion() : ''
+  const rawProfileLocation = profile?.preferences?.location ?? ''
+  const profileRegion = profile ? deriveRegion(rawProfileLocation) : ''
+  const profileCity   = profile ? extractCity(rawProfileLocation) : ''
+  const profileRemote = profile?.preferences?.remote ?? true
 
   const curatedFilters: Partial<SearchFilters> = {
-    tags: profileInterests,
-    keywords: profileKeywords,
+    tags:            profileInterests,
+    keywords:        profileKeywords,
     experienceLevel: effectiveExperienceLevel,
-    jobType: profile?.preferences?.jobType ?? '',
-    region: profileRegion,
-    remote: profile?.preferences?.remote ?? true,
+    jobType:         profile?.preferences?.jobType ?? '',
+    location:        profileCity,   // city-level filter (e.g. "Hyderabad")
+    region:          profileRegion, // country-level filter (e.g. "India")
+    remote:          profileRemote,
   }
 
   // Build a ResumeAnalysis-compatible object from profile data so fit scores
@@ -274,7 +300,12 @@ export default function JobsPage() {
       : effectiveExperienceLevel
     : null
   const matchChips: string[] = [
-    ...(profileRegion ? [profileRegion] : []),
+    // Location: show city if set, otherwise region, with remote suffix
+    ...(profileCity
+      ? [`📍 ${profileCity}${profileRemote ? ' + Remote' : ''}`]
+      : profileRegion
+        ? [profileRegion === 'Remote' ? '🌐 Remote' : `${profileRegion}${profileRemote ? ' + Remote' : ''}`]
+        : profileRemote ? ['🌐 Remote'] : []),
     ...profileInterests.slice(0, 4),
     ...(expChip ? [expChip] : []),
   ]
