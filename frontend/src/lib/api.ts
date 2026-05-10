@@ -39,6 +39,7 @@ export interface UserPreferences {
   interests: string[]
   keywords: string[]
   experienceLevel: string
+  yearsOfExperience?: number
   remote: boolean
   location: string
   jobType: string

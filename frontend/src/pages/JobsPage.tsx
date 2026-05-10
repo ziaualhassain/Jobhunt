@@ -80,7 +80,6 @@ export default function JobsPage() {
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null)
-  const restoredRef = useRef(false)
 
   // ── IP geolocation ──────────────────────────────────────────────────────────
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null)
@@ -165,13 +164,6 @@ export default function JobsPage() {
   })
 
   // ── Browse: user-controlled search ─────────────────────────────────────────
-  useEffect(() => {
-    if (!restoredRef.current && profile?.preferences?.lastSearch) {
-      restoredRef.current = true
-      setFilters(profile.preferences.lastSearch)
-      setSearchKey(k => k + 1)
-    }
-  }, [profile])
 
   const browseFilters: Partial<SearchFilters> = filters ?? {}
 
@@ -202,7 +194,6 @@ export default function JobsPage() {
   function handleSearch(f: Partial<SearchFilters>) {
     setFilters(f)
     setResumeFilters(null)
-    updateProfile({ preferences: { lastSearch: f as SearchFilters } }).catch(() => {})
   }
 
   function handleClear() {

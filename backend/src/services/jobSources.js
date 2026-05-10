@@ -318,7 +318,8 @@ async function aggregateJobs(filters = {}) {
   if (region && region !== 'Remote') {
     allJobs = allJobs.filter(job => {
       const jobRegion = job.region || classifyRegion(job.location);
-      return jobRegion === region || jobRegion === 'Remote';
+      // Include Remote jobs alongside the selected country only when remote is enabled.
+      return jobRegion === region || (remote !== false && jobRegion === 'Remote');
     });
   } else if (region === 'Remote') {
     allJobs = allJobs.filter(job => (job.region || classifyRegion(job.location)) === 'Remote');
