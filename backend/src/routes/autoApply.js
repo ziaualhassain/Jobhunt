@@ -7,7 +7,7 @@ const path = require('path');
 const requireAuth = require('../middleware/auth');
 const { pool, UPLOAD_DIR } = require('../db/database');
 const { decrypt } = require('../services/encrypt');
-const { startApplyJob, applyJobs } = require('../services/autoApply');
+const { startApplyJob, applyJobs, createSession, hasSession } = require('../services/autoApply');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -143,6 +143,7 @@ router.post('/start', async (req, res) => {
       profile,
       credentials,
       resumePath,
+      site,
     });
 
     res.json({ runId });
@@ -202,6 +203,62 @@ router.get('/stream/:runId', (req, res) => {
   // Clean up if client disconnects
   req.on('close', cleanup);
   req.on('aborted', cleanup);
+});
+
+// Default login pages per supported site
+const SITE_LOGIN_URLS = {
+  linkedin:    'https://www.linkedin.com/login',
+  naukri:      'https://www.naukri.com/nlogin/login',
+  indeed:      'https://secure.indeed.com/auth',
+  glassdoor:   'https://www.glassdoor.com/profile/login_input.htm',
+  monster:     'https://www.monster.com/profile/login',
+  shine:       'https://www.shine.com/login',
+  foundit:     'https://www.foundit.in/user/login',
+  internshala: 'https://internshala.com/login/user',
+};
+
+// GET /api/auto-apply/session-status/:site
+// Returns whether a saved browser session exists for this user + site
+router.get('/session-status/:site', (req, res) => {
+  const { site } = req.params;
+  res.json({ hasSession: hasSession(req.user.id, site) });
+});
+
+// GET /api/auto-apply/create-session/:site
+// SSE endpoint — opens a visible browser, waits for the user to log in,
+// saves the Playwright storageState, then emits a "done" event.
+// Uses ?token= for auth since EventSource can't send headers.
+router.get('/create-session/:site', async (req, res) => {
+  const { site } = req.params;
+
+  if (!SITE_LOGIN_URLS[site]) {
+    return res.status(400).json({ error: `Unknown site: ${site}` });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  function send(msg) {
+    res.write(`data: ${JSON.stringify({ msg })}\n\n`);
+  }
+
+  try {
+    const saved = await createSession({
+      userId: req.user.id,
+      site,
+      loginUrl: SITE_LOGIN_URLS[site],
+      onLog: send,
+    });
+    res.write(`event: done\ndata: ${JSON.stringify({ saved })}\n\n`);
+  } catch (err) {
+    console.error('[AutoApply create-session]', err.message);
+    res.write(`event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`);
+  } finally {
+    res.end();
+  }
 });
 
 module.exports = router;

@@ -155,6 +155,18 @@ export async function startAutoApply(data: {
   return res.data
 }
 
+export async function checkSessionStatus(site: string): Promise<{ hasSession: boolean }> {
+  const res = await api.get(`/auto-apply/session-status/${site}`)
+  return res.data
+}
+
+/** Opens an SSE stream that triggers a visible browser login flow on the server.
+ *  Listen for `message` events (log lines) and the `done` event (saved/error). */
+export function createSessionSSE(site: string): EventSource {
+  const token = localStorage.getItem('token') ?? ''
+  return new EventSource(`/api/auto-apply/create-session/${encodeURIComponent(site)}?token=${encodeURIComponent(token)}`)
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {

@@ -3,13 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Save, Loader2, CheckCircle2, AlertCircle, X, PenLine, LogOut,
   ShieldCheck, Sliders, FileText, Upload, Star, Trash2, Lock, Plus,
-  Phone, Link2, Briefcase, DollarSign, Clock, Globe,
+  Phone, Link2, Briefcase, DollarSign, Clock, Globe, MonitorSmartphone,
 } from 'lucide-react'
 import {
   getProfile, updateProfile,
   getApplicationProfile, updateApplicationProfile,
   listResumes, uploadResume, setResumeAsPrimary, deleteResume,
   listCredentials, upsertCredential, deleteCredential,
+  createSessionSSE, checkSessionStatus,
 } from '../lib/api'
 import type { ApplicationProfile, UserResume, JobCredential } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -268,10 +269,37 @@ function CredentialsSection() {
   const [saving, setSaving] = useState(false)
   const [saveErr, setSaveErr] = useState('')
 
+  // Session connect state — keyed by site id
+  const [connectingSite, setConnectingSite] = useState<string | null>(null)
+  const [sessionLogs, setSessionLogs] = useState<string[]>([])
+  const [sessionDone, setSessionDone] = useState(false)
+  const [sessionSaved, setSessionSaved] = useState(false)
+  const [sessionSites, setSessionSites] = useState<Set<string>>(new Set())
+  const sessionESRef = useRef<EventSource | null>(null)
+  const logsEndRef = useRef<HTMLDivElement | null>(null)
+
   const deleteMutation = useMutation({
     mutationFn: deleteCredential,
     onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
   })
+
+  // Check which sites already have a saved browser session
+  useEffect(() => {
+    Promise.all(
+      JOB_SITES.map(s =>
+        checkSessionStatus(s.id)
+          .then(r => r.hasSession ? s.id : null)
+          .catch(() => null)
+      )
+    ).then(results => {
+      setSessionSites(new Set(results.filter(Boolean) as string[]))
+    })
+  }, [])
+
+  // Auto-scroll logs
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [sessionLogs])
 
   async function saveCred() {
     if (!addingSite || !siteEmail || !sitePassword) return
@@ -298,29 +326,93 @@ function CredentialsSection() {
     setSaveErr('')
   }
 
+  function startConnect(siteId: string) {
+    // Close any existing SSE
+    if (sessionESRef.current) {
+      sessionESRef.current.close()
+      sessionESRef.current = null
+    }
+    setConnectingSite(siteId)
+    setSessionLogs(['Opening browser… please complete the login in the browser window that appears.'])
+    setSessionDone(false)
+    setSessionSaved(false)
+
+    const es = createSessionSSE(siteId)
+    sessionESRef.current = es
+
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.msg) setSessionLogs(prev => [...prev, data.msg])
+      } catch { /* ignore */ }
+    }
+
+    es.addEventListener('done', (e: Event) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setSessionDone(true)
+        setSessionSaved(!!data.saved)
+        if (data.saved) setSessionSites(prev => new Set([...prev, siteId]))
+      } catch { /* ignore */ }
+      es.close()
+      sessionESRef.current = null
+    })
+
+    es.addEventListener('error', (e: Event) => {
+      try {
+        const data = JSON.parse((e as MessageEvent).data)
+        setSessionLogs(prev => [...prev, `Error: ${data.error}`])
+      } catch { /* ignore */ }
+      setSessionDone(true)
+      setSessionSaved(false)
+      es.close()
+      sessionESRef.current = null
+    })
+  }
+
+  function closeConnectPanel() {
+    if (sessionESRef.current) {
+      sessionESRef.current.close()
+      sessionESRef.current = null
+    }
+    setConnectingSite(null)
+    setSessionLogs([])
+    setSessionDone(false)
+  }
+
   const credMap = new Map((creds as JobCredential[]).map(c => [c.site, c]))
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-slate-500">Credentials are stored with AES-256 encryption and only used by the auto-apply agent on your device.</p>
+      <p className="text-xs text-slate-500">
+        <span className="text-violet-400 font-medium">Connect Account</span> saves your browser session so the agent skips login (and 2FA) on future runs.
+      </p>
 
       <div className="space-y-2">
         {JOB_SITES.map(site => {
           const existing = credMap.get(site.id)
           const isAdding = addingSite === site.id
+          const isConnecting = connectingSite === site.id
+          const hasStoredSession = sessionSites.has(site.id)
 
           return (
             <div key={site.id} className={`rounded-xl border p-3 space-y-2 ${existing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-slate-700 bg-slate-800/30'}`}>
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Lock size={12} className={existing ? 'text-emerald-400' : 'text-slate-600'} />
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-slate-200">{site.label}</p>
                     <p className="text-xs text-slate-600">{site.url}</p>
                   </div>
                   {existing && (
-                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
                       ✓ {existing.site_email}
+                    </span>
+                  )}
+                  {hasStoredSession && (
+                    <span className="text-[10px] text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded px-1.5 py-0.5 font-medium whitespace-nowrap">
+                      session saved
                     </span>
                   )}
                 </div>
@@ -342,6 +434,18 @@ function CredentialsSection() {
                     {isAdding ? <X size={10} /> : <Plus size={10} />}
                     {existing ? 'Update' : 'Add'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => isConnecting ? closeConnectPanel() : startConnect(site.id)}
+                    className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+                      isConnecting
+                        ? 'border-violet-500/50 text-violet-400 bg-violet-500/10'
+                        : 'border-slate-700 text-slate-400 hover:text-violet-400 hover:border-violet-500/50'
+                    }`}
+                  >
+                    <MonitorSmartphone size={10} />
+                    {isConnecting ? 'Stop' : hasStoredSession ? 'Reconnect' : 'Connect'}
+                  </button>
                 </div>
               </div>
 
@@ -353,7 +457,7 @@ function CredentialsSection() {
                       <input
                         className="input w-full text-sm"
                         type="email"
-                        placeholder={`your@email.com`}
+                        placeholder="your@email.com"
                         value={siteEmail}
                         onChange={e => setSiteEmail(e.target.value)}
                         autoFocus
@@ -383,6 +487,31 @@ function CredentialsSection() {
                     </button>
                     <button type="button" onClick={() => setAddingSite(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
                   </div>
+                </div>
+              )}
+
+              {isConnecting && (
+                <div className="pt-1 border-t border-slate-700 space-y-2">
+                  <p className="text-[10px] text-slate-500">
+                    A browser window will open on your machine. Log in to {site.label} (including any 2FA). The session will be saved automatically once you reach the home page.
+                  </p>
+                  <div className="bg-slate-900 rounded-lg p-2.5 max-h-32 overflow-y-auto font-mono text-[10px] space-y-0.5">
+                    {sessionLogs.map((line, i) => (
+                      <p key={i} className={line.startsWith('✅') ? 'text-emerald-400' : line.startsWith('⏰') ? 'text-amber-400' : line.startsWith('Error') ? 'text-red-400' : 'text-slate-400'}>{line}</p>
+                    ))}
+                    <div ref={logsEndRef} />
+                  </div>
+                  {sessionDone && (
+                    <div className={`flex items-center gap-1.5 text-xs ${sessionSaved ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      {sessionSaved
+                        ? <><CheckCircle2 size={12} /> Session saved — auto-apply will skip login for {site.label}.</>
+                        : <><AlertCircle size={12} /> Session not saved. Try again or use password login.</>
+                      }
+                    </div>
+                  )}
+                  {sessionDone && (
+                    <button type="button" onClick={closeConnectPanel} className="btn-ghost text-xs px-3 py-1.5">Close</button>
+                  )}
                 </div>
               )}
             </div>

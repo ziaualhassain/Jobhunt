@@ -4,8 +4,92 @@
 //   npx playwright install chromium
 // This downloads the Chromium browser (~200MB) needed for automation.
 
+const path = require('path');
+const fs   = require('fs');
 const { chromium } = require('playwright');
 const { callLLM, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE } = require('./llmProvider');
+const { UPLOAD_DIR } = require('../db/database');
+
+const SESSION_DIR = path.join(UPLOAD_DIR, '..', 'sessions');
+if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
+
+function sessionPath(userId, site) {
+  return path.join(SESSION_DIR, `${userId}-${site}.json`);
+}
+
+function hasSession(userId, site) {
+  return fs.existsSync(sessionPath(userId, site));
+}
+
+const BROWSER_CONTEXT_OPTS = {
+  userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  viewport: { width: 1280, height: 800 },
+  extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+};
+
+// Patterns that indicate the user is still on a login/2FA page
+const LOGIN_URL_PATTERNS = [
+  'login', 'signin', 'sign-in', 'checkpoint', 'challenge', 'verification',
+  'two-factor', '2fa', 'otp', 'auth',
+];
+function isLoginPage(url) {
+  const lower = url.toLowerCase();
+  return LOGIN_URL_PATTERNS.some(p => lower.includes(p));
+}
+
+/**
+ * Open a visible browser to the given URL, wait for the user to complete login
+ * (including 2FA), then save the Playwright storageState to disk.
+ * Streams status lines via the onLog callback.
+ * Returns true if session was saved, false on timeout.
+ */
+async function createSession({ userId, site, loginUrl, onLog, timeoutMs = 5 * 60 * 1000 }) {
+  onLog(`Opening browser for ${site} — please log in and complete any 2FA…`);
+
+  const browser = await chromium.launch({
+    headless: false,
+    args: ['--disable-blink-features=AutomationControlled'],
+  });
+
+  try {
+    const context = await browser.newContext(BROWSER_CONTEXT_OPTS);
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+    const page = await context.newPage();
+    await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+    const deadline = Date.now() + timeoutMs;
+    let saved = false;
+
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 2500));
+
+      let currentUrl;
+      try { currentUrl = page.url(); } catch { break; } // browser closed by user
+
+      if (!isLoginPage(currentUrl)) {
+        const sp = sessionPath(userId, site);
+        await context.storageState({ path: sp });
+        saved = true;
+        onLog(`✅ Session saved for ${site}! Future auto-apply runs will skip login.`);
+        break;
+      }
+
+      const remaining = Math.round((deadline - Date.now()) / 1000);
+      onLog(`Waiting for you to finish logging in… (${remaining}s remaining)`);
+    }
+
+    if (!saved) onLog('⏰ Timed out — session not saved. Please try again.');
+    return saved;
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+module.exports.createSession = createSession;
+module.exports.hasSession    = hasSession;
+module.exports.sessionPath   = sessionPath;
 
 // Log which LLM will be used at startup
 if (useAnthropic()) {
@@ -36,13 +120,13 @@ function addLog(runId, msg) {
  * @param {object} opts.credentials  - { email, password } for the job site
  * @param {string} opts.resumePath   - Absolute path to the resume file on disk
  */
-async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath }) {
+async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site }) {
   // Initialise the job entry
   applyJobs.set(runId, { status: 'running', logs: [], result: null });
   addLog(runId, `Starting apply job for ${jobTitle} at ${jobCompany}`);
 
   // Run the agent loop in the background (do not await here)
-  _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath })
+  _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site })
     .catch(err => {
       console.error(`[AutoApply:${runId.slice(0, 8)}] FATAL:`, err);
       addLog(runId, `Fatal error: ${err.message}`);
@@ -54,7 +138,7 @@ async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, cre
     });
 }
 
-async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath }) {
+async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site }) {
   const appProfile = (profile.preferences && profile.preferences.applicationProfile) || {};
   const skills = profile.skills || [];
 
@@ -68,17 +152,25 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
     addLog(runId, `LLM provider: ${provider}`);
 
     addLog(runId, 'Launching browser...');
-    // Run headless when using a local Ollama model to save RAM (no need to watch a text-based agent)
     browser = await chromium.launch({
       headless: !useAnthropic(),
       args: ['--disable-blink-features=AutomationControlled'],
     });
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      viewport: { width: 1280, height: 800 },
-      extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
-    });
-    // Mask webdriver flag so sites don't detect automation
+
+    // Load saved session (cookies + localStorage) if available — skips login + 2FA
+    const sp = site ? sessionPath(profile.id, site) : null;
+    const hasStoredSession = sp && fs.existsSync(sp);
+    const contextOpts = hasStoredSession
+      ? { ...BROWSER_CONTEXT_OPTS, storageState: sp }
+      : BROWSER_CONTEXT_OPTS;
+
+    if (hasStoredSession) {
+      addLog(runId, `Loading saved session for ${site} — login/2FA will be skipped`);
+    } else if (site) {
+      addLog(runId, `No saved session for ${site} — will attempt credential login`);
+    }
+
+    const context = await browser.newContext(contextOpts);
     await context.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
