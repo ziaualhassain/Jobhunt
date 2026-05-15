@@ -69,8 +69,19 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
 
     addLog(runId, 'Launching browser...');
     // Run headless when using a local Ollama model to save RAM (no need to watch a text-based agent)
-    browser = await chromium.launch({ headless: !useAnthropic() });
-    const context = await browser.newContext();
+    browser = await chromium.launch({
+      headless: !useAnthropic(),
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 800 },
+      extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+    });
+    // Mask webdriver flag so sites don't detect automation
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
     page = await context.newPage();
 
     addLog(runId, `Navigating to ${jobUrl}`);
@@ -78,12 +89,16 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
 
     // ─── System prompt ───────────────────────────────────────────────────────
     const usingAnthropic = useAnthropic();
-    const systemPrompt = `You are a job application agent. You control a web browser via tools. \
-Your goal: submit a job application for the candidate using their profile data. \
-Work step by step — ${usingAnthropic ? 'take a screenshot first to see the page, then' : 'use get_page_text to read the page, then'} decide what to do. \
-Be methodical: fill out every required field, upload the resume when prompted, and click \
-Submit/Apply when all fields are complete. When you are done (success or permanent failure), \
-call the done tool.`;
+    const systemPrompt = `You are a job application agent that controls a real web browser. \
+You MUST use tools to interact with the browser — never just describe what you would do. \
+RULES:
+1. Always call a tool on every turn — never end your turn with plain text only.
+2. Start by calling get_page_text to read what is on the page.
+3. If the page has a login form, use fill_input and click_element to log in.
+4. Fill every required application field using fill_input or type_text.
+5. When the application is submitted OR you hit a permanent blocker, call the done tool.
+6. If the page content is blocked or shows an error, call done with success=false.
+You MUST call done at the end — no exceptions.`;
 
     // ─── Initial user message ────────────────────────────────────────────────
     const initialMessage = `Apply for this job:
@@ -102,10 +117,10 @@ Expected CTC: ${appProfile.expectedCTC || 'N/A'}
 Notice Period: ${appProfile.noticePeriod || 'N/A'}
 Skills: ${skills.join(', ')}
 
-Credentials for this site: email=${credentials.email}
-(Password will be auto-filled by the system when you use fill_input with value "USE_STORED_PASSWORD")
+Credentials for this site: email=${credentials.email || 'not saved'}
+(Password will be auto-filled when you use fill_input with value "USE_STORED_PASSWORD")
 
-Start by taking a screenshot to see the page.`;
+IMPORTANT: You must call a tool now. Start by calling get_page_text to read the current page.`;
 
     // ─── Tool definitions ────────────────────────────────────────────────────
     const tools = [
@@ -363,14 +378,21 @@ Start by taking a screenshot to see the page.`;
         messages.push({ role: 'user', content: toolResults });
       }
 
-      // If Claude stopped naturally with no tool calls and didn't call done
+      // Model stopped without calling done — treat as error and nudge it
       if (response.stop_reason === 'end_turn' && !done) {
-        addLog(runId, 'Claude finished without calling done — marking complete');
-        done = true;
-        const entry = applyJobs.get(runId);
-        if (entry) {
-          entry.status = 'complete';
-          entry.result = { success: false, message: 'Agent completed without explicit confirmation' };
+        // Give the model one chance to call done by asking it explicitly
+        const lastText = response.content.find(b => b.type === 'text')?.text || '';
+        addLog(runId, `Model stopped early: "${lastText.slice(0, 120)}"`);
+        messages.push({ role: 'user', content: 'You stopped without calling the done tool. Call done now with success=true if the application was submitted, or success=false if you could not complete it.' });
+        // Only do this once — next end_turn with no tool call truly exits
+        if (messages.filter(m => m.content === 'You stopped without calling the done tool. Call done now with success=true if the application was submitted, or success=false if you could not complete it.').length > 1) {
+          addLog(runId, 'Model repeatedly stopped without calling done — marking error');
+          done = true;
+          const entry = applyJobs.get(runId);
+          if (entry) {
+            entry.status = 'error';
+            entry.result = { success: false, message: lastText || 'Agent stopped without completing the application' };
+          }
         }
       }
     }
