@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { X, Zap, FileText, Loader2, CheckCircle2, AlertCircle, ChevronDown, PauseCircle, PlayCircle } from 'lucide-react'
 import { listResumes, startAutoApply, resumeAutoApply } from '../lib/api'
 import type { Job } from '../types'
@@ -12,6 +13,7 @@ interface Props {
 type Phase = 'setup' | 'running' | 'paused' | 'done' | 'error'
 
 export default function AutoApplyModal({ job, onClose }: Props) {
+  const navigate = useNavigate()
   const [phase, setPhase] = useState<Phase>('setup')
   const [selectedResumeId, setSelectedResumeId] = useState<number | undefined>()
   const [logs, setLogs] = useState<string[]>([])
@@ -74,8 +76,14 @@ export default function AutoApplyModal({ job, onClose }: Props) {
       es.addEventListener('done', (e) => {
         const data = JSON.parse((e as MessageEvent).data)
         setResult(data)
-        setPhase(data.status === 'complete' ? 'done' : 'error')
         es.close()
+        if (data.status === 'complete') {
+          // Success → go straight to Kanban
+          onClose()
+          navigate('/applications')
+        } else {
+          setPhase('error')
+        }
       })
 
       es.onerror = () => {
