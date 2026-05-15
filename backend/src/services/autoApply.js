@@ -177,16 +177,33 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
 
     // ─── System prompt ───────────────────────────────────────────────────────
     const usingAnthropic = useAnthropic();
-    const systemPrompt = `You are a job application agent that controls a real web browser. \
-You MUST use tools to interact with the browser — never just describe what you would do. \
+    const systemPrompt = `You are a job application agent that controls a real web browser.
+You MUST use tools to interact with the browser — never just describe what you would do.
+
 RULES:
 1. Always call a tool on every turn — never end your turn with plain text only.
 2. Start by calling get_page_text to read what is on the page.
 3. If the page has a login form, use fill_input and click_element to log in.
 4. Fill every required application field using fill_input or type_text.
-5. When the application is submitted OR you hit a permanent blocker, call the done tool.
-6. If the page content is blocked or shows an error, call done with success=false.
-You MUST call done at the end — no exceptions.`;
+5. For <select> dropdowns, use fill_input with the visible label text (e.g. "No", "Yes", "Full-time").
+   fill_input auto-detects select elements and calls selectOption internally.
+6. When the application is submitted OR you hit a permanent blocker, call the done tool.
+7. If the page content is blocked or shows an error, call done with success=false.
+You MUST call done at the end — no exceptions.
+
+SCREENING QUESTIONS — use these default answers unless the candidate profile says otherwise:
+- "Have you previously applied for this position / role?" → No
+- "Have you ever been interviewed at [company]?" → No
+- "Have you ever worked at [company]?" → No
+- "Are you legally authorized to work in [country]?" → Yes
+- "Do you now or will you in the future require visa sponsorship?" → No
+- "Are you at least 18 years of age?" → Yes
+- "Are you willing to work full-time / on-site / hybrid?" → Yes
+- "Are you comfortable with the salary / compensation range?" → Yes
+- "Are you currently employed?" → ${appProfile?.noticePeriod ? 'Yes' : 'No'}
+- "Notice period / when can you start?" → ${appProfile?.noticePeriod || 'Immediately'}
+- Gender, race, ethnicity, disability, veteran status → always choose "Prefer not to answer" / "I do not wish to self-identify" / "Decline to state"
+- For any other yes/no screening question, default to the most favourable answer (Yes for willingness, No for disqualifying questions like "have you been terminated for misconduct").`;
 
     // ─── Initial user message ────────────────────────────────────────────────
     const initialMessage = `Apply for this job:
@@ -496,7 +513,16 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
             const value = fillVal === 'USE_STORED_PASSWORD' ? credentials.password : fillVal;
             // Short timeout so a bad selector fails fast
             try {
-              await page.fill(fillSel, String(value ?? ''), { timeout: 5000 });
+              // Auto-detect <select> vs text input — Playwright API differs
+              const tagName = await page.$eval(fillSel, el => el.tagName.toLowerCase())
+                .catch(() => 'input');
+              if (tagName === 'select') {
+                // Try label match first (e.g. "No"), fall back to value match
+                await page.selectOption(fillSel, { label: String(value ?? '') }, { timeout: 5000 })
+                  .catch(() => page.selectOption(fillSel, String(value ?? ''), { timeout: 5000 }));
+              } else {
+                await page.fill(fillSel, String(value ?? ''), { timeout: 5000 });
+              }
             } catch (fillErr) {
               throw new Error(
                 `Selector "${fillSel}" not found or not fillable. ` +
