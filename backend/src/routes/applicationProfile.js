@@ -102,6 +102,59 @@ router.put('/', async (req, res) => {
   }
 });
 
+// ─── Application questionnaire ────────────────────────────────────────────────
+
+// GET /api/application-profile/questionnaire
+router.get('/questionnaire', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT preferences->'questionnaire' AS questionnaire FROM users WHERE id = $1`,
+      [req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json(rows[0].questionnaire || {});
+  } catch (err) {
+    console.error('[Questionnaire GET]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/application-profile/questionnaire
+router.put('/questionnaire', async (req, res) => {
+  // Accept any questionnaire keys — merge into preferences.questionnaire
+  const allowed = [
+    'workAuthorized', 'requiresSponsorship', 'citizenshipStatus',
+    'highestDegree', 'degreeField', 'university', 'graduationYear',
+    'willingToRelocate', 'preferredWorkMode',
+    'gender', 'veteranStatus', 'disabilityStatus', 'ethnicity',
+    'languages', 'drivingLicense',
+  ];
+  const incoming = {};
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) incoming[key] = req.body[key];
+  }
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users
+       SET preferences = jsonb_set(
+         COALESCE(preferences, '{}'::jsonb),
+         '{questionnaire}',
+         COALESCE(preferences->'questionnaire', '{}'::jsonb) || $1::jsonb,
+         true
+       )
+       WHERE id = $2
+       RETURNING preferences->'questionnaire' AS questionnaire`,
+      [JSON.stringify(incoming), req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'User not found' });
+    res.json(rows[0].questionnaire || {});
+  } catch (err) {
+    console.error('[Questionnaire PUT]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── Resume management ────────────────────────────────────────────────────────
 
 // GET /api/application-profile/resumes

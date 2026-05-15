@@ -3,16 +3,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Save, Loader2, CheckCircle2, AlertCircle, X, PenLine, LogOut,
   ShieldCheck, Sliders, FileText, Upload, Star, Trash2, Lock, Plus,
-  Phone, Link2, Briefcase, DollarSign, Clock, Globe, MonitorSmartphone,
+  Phone, Link2, Briefcase, DollarSign, Clock, Globe, MonitorSmartphone, ChevronDown,
 } from 'lucide-react'
 import {
   getProfile, updateProfile,
   getApplicationProfile, updateApplicationProfile,
+  getQuestionnaire, updateQuestionnaire,
   listResumes, uploadResume, setResumeAsPrimary, deleteResume,
   listCredentials, upsertCredential, deleteCredential,
   createSessionSSE, checkSessionStatus,
 } from '../lib/api'
-import type { ApplicationProfile, UserResume, JobCredential } from '../lib/api'
+import type { ApplicationProfile, UserResume, JobCredential, Questionnaire } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const INTEREST_GROUPS = [
@@ -258,6 +259,166 @@ function ResumesSection() {
 }
 
 // ── Job Site Credentials section ─────────────────────────────────────────────
+
+// ── Questionnaire section ────────────────────────────────────────────────────
+
+const YES_NO = [{ v: '', l: '— select —' }, { v: 'yes', l: 'Yes' }, { v: 'no', l: 'No' }]
+const YES_NO_OPEN = [{ v: '', l: '— select —' }, { v: 'yes', l: 'Yes' }, { v: 'no', l: 'No' }, { v: 'open', l: 'Open to discussion' }]
+const PRIVACY = [{ v: '', l: '— select —' }, { v: 'no', l: 'No' }, { v: 'yes', l: 'Yes' }, { v: 'prefer_not_to_say', l: 'Prefer not to say' }]
+const DEGREES = [
+  { v: '', l: '— select —' }, { v: 'high_school', l: 'High School' },
+  { v: 'associate', l: "Associate's" }, { v: 'bachelor', l: "Bachelor's" },
+  { v: 'master', l: "Master's" }, { v: 'phd', l: 'PhD / Doctorate' }, { v: 'other', l: 'Other' },
+]
+const CITIZENSHIP = [
+  { v: '', l: '— select —' }, { v: 'citizen', l: 'Citizen' },
+  { v: 'permanent_resident', l: 'Permanent Resident' }, { v: 'work_visa', l: 'Work Visa' },
+  { v: 'student_visa', l: 'Student Visa' }, { v: 'other', l: 'Other' },
+]
+const WORK_MODES = [
+  { v: '', l: '— select —' }, { v: 'remote', l: 'Remote' },
+  { v: 'hybrid', l: 'Hybrid' }, { v: 'onsite', l: 'On-site' }, { v: 'flexible', l: 'Flexible / Any' },
+]
+const GENDERS = [
+  { v: '', l: '— select —' }, { v: 'male', l: 'Male' }, { v: 'female', l: 'Female' },
+  { v: 'non_binary', l: 'Non-binary' }, { v: 'other', l: 'Other' }, { v: 'prefer_not_to_say', l: 'Prefer not to say' },
+]
+const ETHNICITIES = [
+  { v: '', l: '— select —' },
+  { v: 'asian', l: 'Asian' }, { v: 'black', l: 'Black / African American' },
+  { v: 'hispanic', l: 'Hispanic / Latino' }, { v: 'white', l: 'White / Caucasian' },
+  { v: 'middle_eastern', l: 'Middle Eastern' }, { v: 'native_american', l: 'Native American' },
+  { v: 'pacific_islander', l: 'Pacific Islander' }, { v: 'two_or_more', l: 'Two or more races' },
+  { v: 'other', l: 'Other' }, { v: 'prefer_not_to_say', l: 'Prefer not to say' },
+]
+
+function QSelect({ label, options, value, onChange }: {
+  label: string
+  options: { v: string; l: string }[]
+  value: string
+  onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] text-slate-500 mb-1">{label}</label>
+      <div className="relative">
+        <select
+          className="input w-full appearance-none pr-7 text-sm"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        >
+          {options.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
+        <ChevronDown size={11} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+      </div>
+    </div>
+  )
+}
+
+function QInput({ label, placeholder, value, onChange }: {
+  label: string; placeholder?: string; value: string; onChange: (v: string) => void
+}) {
+  return (
+    <div>
+      <label className="block text-[10px] text-slate-500 mb-1">{label}</label>
+      <input className="input w-full text-sm" placeholder={placeholder} value={value} onChange={e => onChange(e.target.value)} />
+    </div>
+  )
+}
+
+function QuestionnaireSection() {
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({ queryKey: ['questionnaire'], queryFn: getQuestionnaire })
+  const [form, setForm] = useState<Questionnaire>({})
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (data) setForm(data)
+  }, [data])
+
+  function set(key: keyof Questionnaire, val: string) {
+    setForm(prev => ({ ...prev, [key]: val }))
+    setSaved(false)
+  }
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await updateQuestionnaire(form)
+      await qc.invalidateQueries({ queryKey: ['questionnaire'] })
+      setSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (isLoading) return <div className="flex items-center gap-2 text-slate-500 text-sm"><Loader2 size={13} className="animate-spin" />Loading…</div>
+
+  const f = form
+
+  return (
+    <div className="space-y-5">
+      <p className="text-xs text-slate-500">These answers are injected into the agent's context so it can fill common application questions automatically.</p>
+
+      {/* Work authorization */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Work Authorization</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <QSelect label="Legally authorized to work?" options={YES_NO} value={f.workAuthorized ?? ''} onChange={v => set('workAuthorized', v)} />
+          <QSelect label="Require visa sponsorship?" options={YES_NO} value={f.requiresSponsorship ?? ''} onChange={v => set('requiresSponsorship', v)} />
+          <QSelect label="Citizenship / visa status" options={CITIZENSHIP} value={f.citizenshipStatus ?? ''} onChange={v => set('citizenshipStatus', v)} />
+        </div>
+      </div>
+
+      {/* Education */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Education</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <QSelect label="Highest degree" options={DEGREES} value={f.highestDegree ?? ''} onChange={v => set('highestDegree', v)} />
+          <QInput label="Field of study / major" placeholder="Computer Science" value={f.degreeField ?? ''} onChange={v => set('degreeField', v)} />
+          <QInput label="University / college" placeholder="IIT Delhi" value={f.university ?? ''} onChange={v => set('university', v)} />
+          <QInput label="Graduation year" placeholder="2021" value={f.graduationYear ?? ''} onChange={v => set('graduationYear', v)} />
+        </div>
+      </div>
+
+      {/* Work preferences */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Work Preferences</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <QSelect label="Willing to relocate?" options={YES_NO_OPEN} value={f.willingToRelocate ?? ''} onChange={v => set('willingToRelocate', v)} />
+          <QSelect label="Preferred work mode" options={WORK_MODES} value={f.preferredWorkMode ?? ''} onChange={v => set('preferredWorkMode', v)} />
+          <QSelect label="Driving license?" options={YES_NO} value={f.drivingLicense ?? ''} onChange={v => set('drivingLicense', v)} />
+          <QInput label="Languages spoken" placeholder="English, Hindi" value={f.languages ?? ''} onChange={v => set('languages', v)} />
+        </div>
+      </div>
+
+      {/* EEO / diversity */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Diversity & EEO</p>
+          <span className="text-[10px] text-slate-600 bg-slate-800 rounded px-1.5 py-0.5">optional — choose "Prefer not to say" to skip</span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <QSelect label="Gender" options={GENDERS} value={f.gender ?? ''} onChange={v => set('gender', v)} />
+          <QSelect label="Ethnicity / race" options={ETHNICITIES} value={f.ethnicity ?? ''} onChange={v => set('ethnicity', v)} />
+          <QSelect label="Veteran status" options={PRIVACY} value={f.veteranStatus ?? ''} onChange={v => set('veteranStatus', v)} />
+          <QSelect label="Disability status" options={PRIVACY} value={f.disabilityStatus ?? ''} onChange={v => set('disabilityStatus', v)} />
+        </div>
+      </div>
+
+      <button
+        onClick={save}
+        disabled={saving}
+        className="btn-primary text-xs px-4 py-1.5 flex items-center gap-1.5"
+      >
+        {saving ? <Loader2 size={11} className="animate-spin" /> : saved ? <CheckCircle2 size={11} /> : <Save size={11} />}
+        {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Questionnaire'}
+      </button>
+    </div>
+  )
+}
 
 function CredentialsSection() {
   const qc = useQueryClient()
@@ -719,6 +880,18 @@ export default function ProfilePage() {
           </div>
         </div>
         <ApplicationProfileSection />
+      </div>
+
+      {/* ── Application Questionnaire ───────────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={14} strokeWidth={1.75} className="text-brand-400" />
+          <div>
+            <h2 className="font-semibold text-slate-200 text-sm">Application Questionnaire</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Answers to common screening questions — filled automatically by the agent</p>
+          </div>
+        </div>
+        <QuestionnaireSection />
       </div>
 
       {/* ── My Resumes ──────────────────────────────────────────────────── */}

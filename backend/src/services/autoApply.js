@@ -140,6 +140,7 @@ async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSo
 
 async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSource, jobLocation, profile, credentials, resumePath, site }) {
   const appProfile = (profile.preferences && profile.preferences.applicationProfile) || {};
+  const questionnaire = (profile.preferences && profile.preferences.questionnaire) || {};
   const skills = profile.skills || [];
 
   let browser = null;
@@ -208,7 +209,25 @@ SCREENING QUESTIONS — use these default answers unless the candidate profile s
 - "Are you currently employed?" → ${appProfile?.noticePeriod ? 'Yes' : 'No'}
 - "Notice period / when can you start?" → ${appProfile?.noticePeriod || 'Immediately'}
 - Gender, race, ethnicity, disability, veteran status → always choose "Prefer not to answer" / "I do not wish to self-identify" / "Decline to state"
-- For any other yes/no screening question, default to the most favourable answer (Yes for willingness, No for disqualifying questions like "have you been terminated for misconduct").`;
+- For any other yes/no screening question, default to the most favourable answer (Yes for willingness, No for disqualifying questions like "have you been terminated for misconduct").
+${Object.keys(questionnaire).length > 0 ? `
+CANDIDATE QUESTIONNAIRE ANSWERS (use these for matching form questions):
+- Work authorized: ${questionnaire.workAuthorized || 'not specified'}
+- Requires sponsorship: ${questionnaire.requiresSponsorship || 'not specified'}
+- Citizenship/visa status: ${questionnaire.citizenshipStatus || 'not specified'}
+- Highest degree: ${questionnaire.highestDegree || 'not specified'}
+- Field of study: ${questionnaire.degreeField || 'not specified'}
+- University: ${questionnaire.university || 'not specified'}
+- Graduation year: ${questionnaire.graduationYear || 'not specified'}
+- Willing to relocate: ${questionnaire.willingToRelocate || 'not specified'}
+- Preferred work mode: ${questionnaire.preferredWorkMode || 'not specified'}
+- Languages: ${questionnaire.languages || 'not specified'}
+- Driving license: ${questionnaire.drivingLicense || 'not specified'}
+- Gender: ${questionnaire.gender || 'prefer_not_to_say'}
+- Ethnicity: ${questionnaire.ethnicity || 'prefer_not_to_say'}
+- Veteran status: ${questionnaire.veteranStatus || 'no'}
+- Disability status: ${questionnaire.disabilityStatus || 'no'}
+Use these to fill matching dropdowns and fields. For EEO fields without an answer, select "Prefer not to say".` : ''}`;
 
     // ─── Initial user message ────────────────────────────────────────────────
     const initialMessage = `Apply for this job:

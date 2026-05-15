@@ -95,6 +95,39 @@ export interface JobCredential {
   created_at: string
 }
 
+export interface Questionnaire {
+  // Work authorization
+  workAuthorized?: string         // 'yes' | 'no'
+  requiresSponsorship?: string    // 'yes' | 'no'
+  citizenshipStatus?: string      // 'citizen' | 'permanent_resident' | 'work_visa' | 'student_visa' | 'other'
+  // Education
+  highestDegree?: string          // 'high_school' | 'associate' | 'bachelor' | 'master' | 'phd' | 'other'
+  degreeField?: string
+  university?: string
+  graduationYear?: string
+  // Work preferences
+  willingToRelocate?: string      // 'yes' | 'no' | 'open'
+  preferredWorkMode?: string      // 'remote' | 'hybrid' | 'onsite' | 'flexible'
+  // EEO / diversity
+  gender?: string
+  veteranStatus?: string          // 'no' | 'yes' | 'prefer_not_to_say'
+  disabilityStatus?: string       // 'no' | 'yes' | 'prefer_not_to_say'
+  ethnicity?: string
+  // Other
+  languages?: string
+  drivingLicense?: string         // 'yes' | 'no'
+}
+
+export async function getQuestionnaire(): Promise<Questionnaire> {
+  const res = await api.get('/application-profile/questionnaire')
+  return res.data
+}
+
+export async function updateQuestionnaire(data: Questionnaire): Promise<Questionnaire> {
+  const res = await api.put('/application-profile/questionnaire', data)
+  return res.data
+}
+
 export async function getApplicationProfile(): Promise<ApplicationProfile> {
   const res = await api.get('/application-profile')
   return res.data
