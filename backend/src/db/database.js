@@ -2,6 +2,10 @@ const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
+// Ensure the resume uploads directory exists at startup
+const UPLOAD_DIR = path.join(__dirname, '../../uploads/resumes');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
 const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
@@ -145,6 +149,29 @@ async function initDb() {
       content TEXT NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS user_resumes (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      label TEXT NOT NULL DEFAULT 'Resume',
+      filename TEXT NOT NULL,
+      original_name TEXT NOT NULL,
+      file_size INTEGER,
+      is_primary BOOLEAN DEFAULT false,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_job_credentials (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      site TEXT NOT NULL,
+      site_email TEXT NOT NULL,
+      encrypted_password TEXT NOT NULL,
+      iv TEXT NOT NULL,
+      auth_tag TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, site)
+    );
   `);
   // Add preferences column if it doesn't exist yet (idempotent migration)
   await pool.query(`
@@ -165,4 +192,4 @@ async function initDb() {
   console.log('[DB] Schema ready');
 }
 
-module.exports = { pool, initDb };
+module.exports = { pool, initDb, UPLOAD_DIR };
