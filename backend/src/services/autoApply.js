@@ -16,6 +16,7 @@ function addLog(runId, msg) {
   const entry = applyJobs.get(runId);
   if (!entry) return;
   entry.logs.push({ ts: Date.now(), msg });
+  console.log(`[AutoApply:${runId.slice(0, 8)}] ${msg}`);
 }
 
 /**
@@ -38,6 +39,7 @@ async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, cre
   // Run the agent loop in the background (do not await here)
   _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath })
     .catch(err => {
+      console.error(`[AutoApply:${runId.slice(0, 8)}] FATAL:`, err);
       addLog(runId, `Fatal error: ${err.message}`);
       const entry = applyJobs.get(runId);
       if (entry) {
