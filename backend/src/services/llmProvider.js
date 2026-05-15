@@ -183,16 +183,20 @@ async function callLLM({ systemText, messages, tools }) {
     try {
       response = await axios.post(`${OLLAMA_BASE}/api/chat`, payload, { timeout: 120000 });
     } catch (err) {
-      // Improve the error message for common failure modes
       if (err.response?.status === 404) {
+        throw new Error(`Ollama model "${OLLAMA_MODEL}" not found. Run: ollama pull ${OLLAMA_MODEL}`);
+      }
+      if (err.response?.status === 400) {
+        // Most common cause: model doesn't support tool calling
+        const detail = err.response?.data?.error || '';
         throw new Error(
-          `Ollama model "${OLLAMA_MODEL}" not found. Run: ollama pull ${OLLAMA_MODEL}`
+          `Ollama rejected the request (400) — "${OLLAMA_MODEL}" may not support tool calling.\n` +
+          `Set OLLAMA_MODEL to a supported model (llama3.2:1b, llama3.1, mistral, qwen2.5).\n` +
+          `Detail: ${detail}`
         );
       }
       if (err.code === 'ECONNREFUSED') {
-        throw new Error(
-          `Cannot connect to Ollama at ${OLLAMA_BASE}. Make sure Ollama is running: ollama serve`
-        );
+        throw new Error(`Cannot connect to Ollama at ${OLLAMA_BASE}. Make sure Ollama is running: ollama serve`);
       }
       throw err;
     }
