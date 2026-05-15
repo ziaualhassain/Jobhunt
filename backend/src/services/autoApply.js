@@ -68,7 +68,8 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
     addLog(runId, `LLM provider: ${provider}`);
 
     addLog(runId, 'Launching browser...');
-    browser = await chromium.launch({ headless: false });
+    // Run headless when using a local Ollama model to save RAM (no need to watch a text-based agent)
+    browser = await chromium.launch({ headless: !useAnthropic() });
     const context = await browser.newContext();
     page = await context.newPage();
 
@@ -296,10 +297,12 @@ Start by taking a screenshot to see the page.`;
 
           } else if (toolName === 'get_page_text') {
             const text = await page.evaluate(() => document.body.innerText);
+            // Limit context fed to local models to reduce RAM pressure
+            const limit = useAnthropic() ? 4000 : 1500;
             toolResult = {
               type: 'tool_result',
               tool_use_id: toolUseId,
-              content: text.slice(0, 4000),
+              content: text.slice(0, limit),
             };
 
           } else if (toolName === 'navigate_to') {

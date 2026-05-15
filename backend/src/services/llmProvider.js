@@ -16,7 +16,8 @@
  */
 
 const OLLAMA_BASE  = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || 'llama3.1';
+// llama3.2:1b is ~1.3 GB vs llama3.1's ~8 GB — much easier on a laptop
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || 'llama3.2:1b';
 
 function useAnthropic() { return !!process.env.ANTHROPIC_API_KEY; }
 
