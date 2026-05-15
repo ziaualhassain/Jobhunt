@@ -225,6 +225,8 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
     const SAFETY_LIMIT = 30;
     let toolCallCount = 0;
     let done = false;
+    let consecutiveErrors = 0;
+    let lastErrorMsg = '';
 
     while (!done && toolCallCount < SAFETY_LIMIT) {
       addLog(runId, `Calling LLM (turn ${toolCallCount + 1})...`);
@@ -273,10 +275,16 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
             addLog(runId, 'Screenshot captured');
 
           } else if (toolName === 'click_element') {
-            if (input.selector) {
-              await page.click(input.selector, { timeout: 10000 });
+            // Accept common aliases small models use instead of 'selector'
+            const clickSel = input.selector || input.element_id || input.xpath || input.id
+              ? (input.selector || input.element_id || input.xpath || (input.id ? `#${input.id}` : null))
+              : null;
+            if (clickSel) {
+              await page.click(clickSel, { timeout: 10000 });
             } else if (input.x !== undefined && input.y !== undefined) {
               await page.mouse.click(input.x, input.y);
+            } else {
+              throw new Error('click_element requires selector (CSS selector) or x/y coordinates');
             }
             toolResult = {
               type: 'tool_result',
@@ -293,13 +301,23 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
             };
 
           } else if (toolName === 'fill_input') {
-            const value = input.value === 'USE_STORED_PASSWORD' ? credentials.password : input.value;
-            await page.fill(input.selector, value, { timeout: 10000 });
-            const displayValue = input.value === 'USE_STORED_PASSWORD' ? '***' : input.value;
+            // Accept common aliases small models hallucinate instead of 'selector'
+            const fillSel = input.selector || input.element_id || input.xpath
+              || input.name ? (input.selector || input.element_id || input.xpath || `[name="${input.name}"]`) : null;
+            const fillVal = input.value ?? input.text ?? input.content ?? '';
+            if (!fillSel) {
+              throw new Error(
+                'fill_input requires a "selector" parameter (CSS selector string, e.g. "#email" or "input[name=email]"). ' +
+                `Received keys: ${Object.keys(input).join(', ')}`
+              );
+            }
+            const value = fillVal === 'USE_STORED_PASSWORD' ? credentials.password : fillVal;
+            await page.fill(fillSel, String(value ?? ''), { timeout: 10000 });
+            const displayValue = fillVal === 'USE_STORED_PASSWORD' ? '***' : fillVal;
             toolResult = {
               type: 'tool_result',
               tool_use_id: toolUseId,
-              content: `Filled "${input.selector}" with "${displayValue}"`,
+              content: `Filled "${fillSel}" with "${displayValue}"`,
             };
 
           } else if (toolName === 'press_key') {
@@ -362,19 +380,38 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
           }
         } catch (toolErr) {
           addLog(runId, `Tool error (${toolName}): ${toolErr.message}`);
+          const errMsg = toolErr.message;
+          // Track consecutive identical errors — abort if model is stuck in a loop
+          if (errMsg === lastErrorMsg) {
+            consecutiveErrors++;
+          } else {
+            consecutiveErrors = 1;
+            lastErrorMsg = errMsg;
+          }
+          if (consecutiveErrors >= 3) {
+            addLog(runId, `Aborting: same error repeated ${consecutiveErrors}x — model is stuck`);
+            done = true;
+            const entry = applyJobs.get(runId);
+            if (entry) {
+              entry.status = 'error';
+              entry.result = { success: false, message: `Agent stuck: ${errMsg}` };
+            }
+          }
           toolResult = {
             type: 'tool_result',
             tool_use_id: toolUseId,
             is_error: true,
-            content: `Error executing ${toolName}: ${toolErr.message}`,
+            content: `Error executing ${toolName}: ${errMsg}`,
           };
         }
 
+        // Reset streak on any successful tool call
+        if (!toolResult.is_error) consecutiveErrors = 0;
         toolResults.push(toolResult);
       }
 
       // If there were tool uses, send results back
-      if (toolResults.length > 0) {
+      if (toolResults.length > 0 && !done) {
         messages.push({ role: 'user', content: toolResults });
       }
 
