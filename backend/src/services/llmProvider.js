@@ -23,7 +23,7 @@ function useAnthropic() { return !!process.env.ANTHROPIC_API_KEY; }
 
 // ── Ollama helpers ────────────────────────────────────────────────────────────
 
-function anthropicToolsToOpenAI(tools) {
+function anthropicToolsToOllama(tools) {
   return tools.map(t => ({
     type: 'function',
     function: { name: t.name, description: t.description, parameters: t.input_schema },
@@ -31,16 +31,18 @@ function anthropicToolsToOpenAI(tools) {
 }
 
 /**
- * Convert Anthropic-style messages (with content arrays, tool_use, tool_result,
- * and image blocks) into the flat OpenAI message array.
+ * Convert Anthropic-style messages → Ollama native /api/chat format.
  *
- * Images are replaced with a text note because most Ollama models are text-only.
+ * Key differences from OpenAI format:
+ *  - assistant tool_calls have NO `id` or `type` field; arguments is an object (not string)
+ *  - tool result messages use { role:'tool', content:'...' } with NO tool_call_id
+ *  - assistant content must be '' not null when only tool_calls are present
+ *  - images are replaced with a text note (most Ollama models are text-only)
  */
-function anthropicMessagesToOpenAI(messages) {
+function anthropicMessagesToOllama(messages) {
   const out = [];
 
   for (const msg of messages) {
-    // Plain-string content — pass straight through
     if (typeof msg.content === 'string') {
       out.push({ role: msg.role, content: msg.content });
       continue;
@@ -56,47 +58,40 @@ function anthropicMessagesToOpenAI(messages) {
         if (b.type === 'text') {
           textParts.push(b.text);
         } else if (b.type === 'tool_use') {
-          toolCalls.push({
-            id: b.id,
-            type: 'function',
-            function: { name: b.name, arguments: JSON.stringify(b.input) },
-          });
+          // Ollama native format: no id, no type, arguments is an object
+          toolCalls.push({ function: { name: b.name, arguments: b.input || {} } });
         }
-        // image blocks from assistant are ignored (shouldn't normally appear)
       }
 
-      const m = { role: 'assistant', content: textParts.join('\n') || null };
+      const m = { role: 'assistant', content: textParts.join('\n') || '' };
       if (toolCalls.length) m.tool_calls = toolCalls;
       out.push(m);
 
     } else if (msg.role === 'user') {
-      // Split into tool results (→ role:tool) and regular text/image blocks
       const toolResults = blocks.filter(b => b.type === 'tool_result');
       const textBlocks  = blocks.filter(b => b.type === 'text');
       const imageBlocks = blocks.filter(b => b.type === 'image');
 
-      // Tool results each get their own message
+      // Each tool result → { role: 'tool', content: '...' } — no tool_call_id in Ollama native
       for (const tr of toolResults) {
         let content;
         if (typeof tr.content === 'string') {
           content = tr.content;
         } else if (Array.isArray(tr.content)) {
-          // Replace images with a placeholder; keep text
           content = tr.content.map(b => {
             if (b.type === 'text')  return b.text;
-            if (b.type === 'image') return '[screenshot captured — use get_page_text to read the page]';
+            if (b.type === 'image') return '[screenshot — use get_page_text to read the page]';
             return '';
           }).filter(Boolean).join('\n');
         } else {
           content = 'done';
         }
-        out.push({ role: 'tool', tool_call_id: tr.tool_use_id, content: content || 'done' });
+        out.push({ role: 'tool', content: content || 'done' });
       }
 
-      // Regular text + image blocks become a user message
       const parts = [
         ...textBlocks.map(b => b.text),
-        ...imageBlocks.map(() => '[screenshot captured — use get_page_text to read the page]'),
+        ...imageBlocks.map(() => '[screenshot — use get_page_text to read the page]'),
       ].filter(Boolean);
 
       if (parts.length) out.push({ role: 'user', content: parts.join('\n') });
@@ -167,7 +162,7 @@ async function callLLM({ systemText, messages, tools }) {
 
     const ollamaMessages = [
       { role: 'system', content: systemText },
-      ...anthropicMessagesToOpenAI(messages),
+      ...anthropicMessagesToOllama(messages),
     ];
 
     const payload = {
@@ -176,8 +171,8 @@ async function callLLM({ systemText, messages, tools }) {
       stream: false,
     };
 
-    const oaiTools = anthropicToolsToOpenAI(tools);
-    if (oaiTools.length) payload.tools = oaiTools;
+    const ollamaTools = anthropicToolsToOllama(tools);
+    if (ollamaTools.length) payload.tools = ollamaTools;
 
     let response;
     try {
@@ -187,12 +182,12 @@ async function callLLM({ systemText, messages, tools }) {
         throw new Error(`Ollama model "${OLLAMA_MODEL}" not found. Run: ollama pull ${OLLAMA_MODEL}`);
       }
       if (err.response?.status === 400) {
-        // Most common cause: model doesn't support tool calling
-        const detail = err.response?.data?.error || '';
+        const detail = err.response?.data?.error || JSON.stringify(err.response?.data) || '';
+        console.error('[llmProvider] Ollama 400 body:', detail);
         throw new Error(
-          `Ollama rejected the request (400) — "${OLLAMA_MODEL}" may not support tool calling.\n` +
-          `Set OLLAMA_MODEL to a supported model (llama3.2:1b, llama3.1, mistral, qwen2.5).\n` +
-          `Detail: ${detail}`
+          `Ollama rejected the request (400) for model "${OLLAMA_MODEL}".\n` +
+          `If this is turn > 1, the model may not handle multi-turn tool calls correctly.\n` +
+          `Try OLLAMA_MODEL=llama3.1 or mistral instead.\nDetail: ${detail}`
         );
       }
       if (err.code === 'ECONNREFUSED') {
