@@ -120,13 +120,18 @@ Skills: ${skills.join(', ')}
 Credentials for this site: email=${credentials.email || 'not saved'}
 (Password will be auto-filled when you use fill_input with value "USE_STORED_PASSWORD")
 
-IMPORTANT: You must call a tool now. Start by calling get_page_text to read the current page.`;
+IMPORTANT: You must call a tool now. Start by calling get_interactive_elements to see what inputs and buttons are on the page.`;
 
     // ─── Tool definitions ────────────────────────────────────────────────────
     const tools = [
       {
         name: 'take_screenshot',
         description: 'Take a screenshot of the current browser page and return it as an image.',
+        input_schema: { type: 'object', properties: {}, required: [] },
+      },
+      {
+        name: 'get_interactive_elements',
+        description: 'Returns all inputs, buttons, links and select fields on the page with their exact CSS selectors. Always call this before fill_input or click_element so you know which selectors actually exist.',
         input_schema: { type: 'object', properties: {}, required: [] },
       },
       {
@@ -155,7 +160,7 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
       },
       {
         name: 'fill_input',
-        description: 'Fill an input field by CSS selector with a given value. Use value "USE_STORED_PASSWORD" to fill in the stored password.',
+        description: 'Fill an input field by CSS selector with a given value. Use value "USE_STORED_PASSWORD" to fill in the stored password. Call get_interactive_elements first to find valid selectors.',
         input_schema: {
           type: 'object',
           properties: {
@@ -276,6 +281,74 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
               };
             }
             addLog(runId, 'Screenshot captured');
+
+          } else if (toolName === 'get_interactive_elements') {
+            const elements = await page.evaluate(() => {
+              const results = [];
+              const seen = new Set();
+
+              function bestSelector(el) {
+                if (el.id) return `#${el.id}`;
+                if (el.name) return `${el.tagName.toLowerCase()}[name="${el.name}"]`;
+                if (el.getAttribute('data-id')) return `[data-id="${el.getAttribute('data-id')}"]`;
+                // class-based fallback (first two classes)
+                const cls = Array.from(el.classList).slice(0, 2).join('.');
+                return cls ? `${el.tagName.toLowerCase()}.${cls}` : el.tagName.toLowerCase();
+              }
+
+              // Inputs
+              for (const el of document.querySelectorAll('input, textarea, select')) {
+                const sel = bestSelector(el);
+                if (seen.has(sel)) continue;
+                seen.add(sel);
+                results.push({
+                  tag: el.tagName.toLowerCase(),
+                  selector: sel,
+                  type: el.type || null,
+                  name: el.name || null,
+                  placeholder: el.placeholder || null,
+                  label: el.labels?.[0]?.textContent?.trim() || null,
+                  value: el.value ? '[has value]' : null,
+                });
+              }
+
+              // Buttons and submit-like links
+              for (const el of document.querySelectorAll('button, [role="button"], a[href], input[type="submit"]')) {
+                const text = el.textContent?.trim().slice(0, 60);
+                const ariaLabel = el.getAttribute('aria-label');
+                if (!text && !ariaLabel) continue;
+                const sel = bestSelector(el);
+                if (seen.has(sel)) continue;
+                seen.add(sel);
+                results.push({
+                  tag: el.tagName.toLowerCase(),
+                  selector: sel,
+                  type: el.type || el.getAttribute('role') || null,
+                  text: text || ariaLabel,
+                  ariaLabel: ariaLabel || null,
+                });
+              }
+
+              return results.slice(0, 40); // cap at 40 elements
+            });
+
+            const summary = elements.map(e => {
+              const parts = [`[${e.tag}]`, `selector: ${e.selector}`];
+              if (e.type)        parts.push(`type=${e.type}`);
+              if (e.name)        parts.push(`name=${e.name}`);
+              if (e.placeholder) parts.push(`placeholder="${e.placeholder}"`);
+              if (e.label)       parts.push(`label="${e.label}"`);
+              if (e.text)        parts.push(`text="${e.text}"`);
+              if (e.ariaLabel)   parts.push(`aria-label="${e.ariaLabel}"`);
+              return parts.join('  ');
+            }).join('\n');
+
+            toolResult = {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: summary || 'No interactive elements found on this page.',
+            };
+            addLog(runId, `Found ${elements.length} interactive elements`);
 
           } else if (toolName === 'click_element') {
             // Accept common aliases small models use instead of 'selector'
