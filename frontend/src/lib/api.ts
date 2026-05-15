@@ -149,6 +149,8 @@ export async function startAutoApply(data: {
   jobTitle: string
   jobCompany: string
   jobSource: string
+  jobId?: string
+  jobLocation?: string
   resumeId?: number
 }): Promise<{ runId: string }> {
   const res = await api.post('/auto-apply/start', data)

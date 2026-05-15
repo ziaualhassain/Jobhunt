@@ -8,7 +8,7 @@ const path = require('path');
 const fs   = require('fs');
 const { chromium } = require('playwright');
 const { callLLM, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE } = require('./llmProvider');
-const { UPLOAD_DIR } = require('../db/database');
+const { UPLOAD_DIR, pool } = require('../db/database');
 
 const SESSION_DIR = path.join(UPLOAD_DIR, '..', 'sessions');
 if (!fs.existsSync(SESSION_DIR)) fs.mkdirSync(SESSION_DIR, { recursive: true });
@@ -112,17 +112,21 @@ function addLog(runId, msg) {
  * @param {string} opts.jobUrl       - URL of the job posting
  * @param {string} opts.jobTitle     - Job title
  * @param {string} opts.jobCompany   - Company name
+ * @param {string} opts.jobId        - jobs table job_id (for Kanban card creation)
+ * @param {string} opts.jobSource    - Source site name (e.g. linkedin, naukri)
+ * @param {string} opts.jobLocation  - Job location string
  * @param {object} opts.profile      - User profile (name, email, preferences.applicationProfile, skills)
  * @param {object} opts.credentials  - { email, password } for the job site
  * @param {string} opts.resumePath   - Absolute path to the resume file on disk
+ * @param {string} opts.site         - Resolved credential site key
  */
-async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site }) {
+async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSource, jobLocation, profile, credentials, resumePath, site }) {
   // Initialise the job entry
   applyJobs.set(runId, { status: 'running', logs: [], result: null });
   addLog(runId, `Starting apply job for ${jobTitle} at ${jobCompany}`);
 
   // Run the agent loop in the background (do not await here)
-  _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site })
+  _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSource, jobLocation, profile, credentials, resumePath, site })
     .catch(err => {
       console.error(`[AutoApply:${runId.slice(0, 8)}] FATAL:`, err);
       addLog(runId, `Fatal error: ${err.message}`);
@@ -134,7 +138,7 @@ async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, profile, cre
     });
 }
 
-async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, credentials, resumePath, site }) {
+async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSource, jobLocation, profile, credentials, resumePath, site }) {
   const appProfile = (profile.preferences && profile.preferences.applicationProfile) || {};
   const skills = profile.skills || [];
 
@@ -580,6 +584,44 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
               entry.result = { success: input.success, message: input.message };
             }
             addLog(runId, `Done: ${input.success ? 'SUCCESS' : 'FAILED'} — ${input.message}`);
+
+            // On success, upsert an "applied" Kanban card for this job
+            if (input.success) {
+              try {
+                // If already in Kanban (any status), bump it to "applied"
+                const { rows: existing } = await pool.query(
+                  'SELECT id, status FROM applications WHERE user_id = $1 AND (job_id = $2 OR (url = $3 AND $3 IS NOT NULL))',
+                  [profile.id, jobId || null, jobUrl || null]
+                );
+                if (existing.length) {
+                  if (existing[0].status !== 'applied') {
+                    await pool.query(
+                      'UPDATE applications SET status = $1, applied_date = NOW(), updated_at = NOW() WHERE id = $2',
+                      ['applied', existing[0].id]
+                    );
+                    addLog(runId, '📋 Kanban card moved to Applied');
+                  } else {
+                    addLog(runId, '📋 Already in Applied column');
+                  }
+                } else {
+                  await pool.query(`
+                    INSERT INTO applications
+                      (user_id, job_id, title, company, location, url, source, status, applied_date, notes)
+                    VALUES ($1,$2,$3,$4,$5,$6,$7,'applied',NOW(),$8)
+                  `, [
+                    profile.id, jobId || null, jobTitle, jobCompany,
+                    jobLocation || null, jobUrl, jobSource || null,
+                    'Auto-applied via agent',
+                  ]);
+                  addLog(runId, '📋 Added to Kanban as Applied');
+                }
+              } catch (dbErr) {
+                // Non-fatal — application was still submitted, just log the Kanban failure
+                console.error('[AutoApply] Failed to create Kanban card:', dbErr.message);
+                addLog(runId, `⚠️ Could not update Kanban: ${dbErr.message}`);
+              }
+            }
+
             toolResult = {
               type: 'tool_result',
               tool_use_id: toolUseId,

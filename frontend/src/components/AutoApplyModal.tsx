@@ -48,6 +48,8 @@ export default function AutoApplyModal({ job, onClose }: Props) {
       jobTitle: job.title,
       jobCompany: job.company,
       jobSource: job.source,
+      jobId: job.job_id,
+      jobLocation: job.location,
       resumeId: selectedResumeId,
     }).then(({ runId }) => {
       const token = localStorage.getItem('token')

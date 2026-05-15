@@ -63,7 +63,7 @@ function resolveSite(jobUrl, jobSource) {
 // POST /api/auto-apply/start
 // Body: { jobUrl, jobTitle, jobCompany, jobSource, resumeId? }
 router.post('/start', async (req, res) => {
-  const { jobUrl, jobSource, resumeId } = req.body;
+  const { jobUrl, jobSource, resumeId, jobId, jobLocation } = req.body;
   const jobTitle = req.body.jobTitle || 'Unknown Position';
   const jobCompany = req.body.jobCompany || 'Unknown Company';
 
@@ -140,6 +140,9 @@ router.post('/start', async (req, res) => {
       jobUrl,
       jobTitle,
       jobCompany,
+      jobId:       jobId     || null,
+      jobSource:   jobSource || null,
+      jobLocation: jobLocation || null,
       profile,
       credentials,
       resumePath,
