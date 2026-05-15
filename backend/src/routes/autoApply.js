@@ -39,10 +39,12 @@ function jobSourceToSite(jobSource) {
 // POST /api/auto-apply/start
 // Body: { jobUrl, jobTitle, jobCompany, jobSource, resumeId? }
 router.post('/start', async (req, res) => {
-  const { jobUrl, jobTitle, jobCompany, jobSource, resumeId } = req.body;
+  const { jobUrl, jobSource, resumeId } = req.body;
+  const jobTitle = req.body.jobTitle || 'Unknown Position';
+  const jobCompany = req.body.jobCompany || 'Unknown Company';
 
-  if (!jobUrl || !jobTitle || !jobCompany) {
-    return res.status(400).json({ error: 'jobUrl, jobTitle, and jobCompany are required' });
+  if (!jobUrl) {
+    return res.status(400).json({ error: 'jobUrl is required' });
   }
 
   try {
