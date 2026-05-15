@@ -12,28 +12,52 @@ const { startApplyJob, applyJobs } = require('../services/autoApply');
 const router = express.Router();
 router.use(requireAuth);
 
-// Map job source names → credential site names
+// Map known job site domains → credential site key
+const DOMAIN_TO_SITE = {
+  'linkedin.com':     'linkedin',
+  'naukri.com':       'naukri',
+  'indeed.com':       'indeed',
+  'glassdoor.com':    'glassdoor',
+  'monster.com':      'monster',
+  'shine.com':        'shine',
+  'foundit.in':       'foundit',
+  'internshala.com':  'internshala',
+};
+
+// Map job source names → credential site names (fallback when URL doesn't match)
 const SOURCE_TO_SITE = {
-  linkedin: 'linkedin',
-  naukri: 'naukri',
-  indeed: 'indeed',
-  glassdoor: 'glassdoor',
-  monster: 'monster',
-  shine: 'shine',
-  foundit: 'foundit',
+  linkedin:    'linkedin',
+  naukri:      'naukri',
+  indeed:      'indeed',
+  glassdoor:   'glassdoor',
+  monster:     'monster',
+  shine:       'shine',
+  foundit:     'foundit',
   internshala: 'internshala',
 };
 
-function jobSourceToSite(jobSource) {
+/**
+ * Determine which saved credential site to use.
+ * Priority: job URL domain > jobSource name.
+ * This ensures a LinkedIn job found on Himalayas still uses LinkedIn creds.
+ */
+function resolveSite(jobUrl, jobSource) {
+  // 1. Match on URL domain
+  try {
+    const hostname = new URL(jobUrl).hostname.replace(/^www\./, '');
+    for (const [domain, site] of Object.entries(DOMAIN_TO_SITE)) {
+      if (hostname === domain || hostname.endsWith(`.${domain}`)) return site;
+    }
+  } catch { /* invalid URL — fall through */ }
+
+  // 2. Match on source name
   if (!jobSource) return null;
   const lower = jobSource.toLowerCase();
-  // Try direct mapping first
   if (SOURCE_TO_SITE[lower]) return SOURCE_TO_SITE[lower];
-  // Try partial match
   for (const [key, site] of Object.entries(SOURCE_TO_SITE)) {
     if (lower.includes(key)) return site;
   }
-  return lower; // Fall back to lowercased source as site name
+  return null;
 }
 
 // POST /api/auto-apply/start
@@ -90,7 +114,7 @@ router.post('/start', async (req, res) => {
     const resumePath = path.join(UPLOAD_DIR, resumeRow.filename);
 
     // ─── Find credentials ─────────────────────────────────────────────────────
-    const site = jobSourceToSite(jobSource);
+    const site = resolveSite(jobUrl, jobSource);
     let credentials = { email: null, password: null };
 
     if (site) {
