@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
+const { shouldUseApi } = require('../services/llmProvider');
 const { aggregateJobs } = require('../services/jobSources');
 const { pool } = require('../db/database');
 
@@ -223,15 +224,15 @@ router.post('/deep-score', async (req, res) => {
 
     let result;
 
-    // Try Ollama first (free, local), fall back to Claude
-    try {
-      await axios.get(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { timeout: 2000 });
-      result = await deepScoreWithOllama(analysis, job);
-    } catch {
-      if (!process.env.ANTHROPIC_API_KEY) {
-        return res.status(503).json({ error: 'No AI backend available. Run Ollama locally or set ANTHROPIC_API_KEY.' });
-      }
+    if (shouldUseApi()) {
       result = await deepScoreWithClaude(analysis, job);
+    } else {
+      try {
+        await axios.get(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { timeout: 2000 });
+        result = await deepScoreWithOllama(analysis, job);
+      } catch {
+        return res.status(503).json({ error: 'No AI backend available. Set USE_API=true with ANTHROPIC_API_KEY, or run Ollama locally.' });
+      }
     }
 
     res.json(result);

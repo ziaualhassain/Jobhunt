@@ -16,14 +16,33 @@
  */
 
 const OLLAMA_BASE  = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-// Best models for tool-calling (ranked by capability):
-//   claude-opus-4-7  → set ANTHROPIC_API_KEY          (best — cloud)
-//   qwen2.5          → ollama pull qwen2.5   (~4.7 GB) (best local)
-//   llama3.1         → ollama pull llama3.1  (~4.7 GB) (good local)
-//   llama3.2:1b      → ollama pull llama3.2:1b (~1.3GB) (too small for CSS selectors)
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || 'qwen2.5';
 
-function useAnthropic() { return !!process.env.ANTHROPIC_API_KEY; }
+/**
+ * Decide whether to use the Anthropic API for a given feature.
+ *
+ * Controls:
+ *   USE_API_FOR_AUTO_APPLY=true|false  — governs the auto-apply agent
+ *   USE_API=true|false                 — governs all other AI features
+ *
+ * If the relevant flag is not set, falls back to: use API when
+ * ANTHROPIC_API_KEY is present, otherwise use Ollama.
+ *
+ * @param {'auto-apply'|'feature'} type
+ */
+function shouldUseApi(type = 'feature') {
+  const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  const flag = type === 'auto-apply'
+    ? process.env.USE_API_FOR_AUTO_APPLY
+    : process.env.USE_API;
+
+  if (flag === 'true')  return hasKey;
+  if (flag === 'false') return false;
+  return hasKey; // not set → backward-compat: use API if key exists
+}
+
+// Kept for internal use by callLLM
+function useAnthropic() { return shouldUseApi('auto-apply'); }
 
 // ── Ollama helpers ────────────────────────────────────────────────────────────
 
@@ -204,4 +223,4 @@ async function callLLM({ systemText, messages, tools }) {
   }
 }
 
-module.exports = { callLLM, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE };
+module.exports = { callLLM, shouldUseApi, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE };

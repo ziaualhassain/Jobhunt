@@ -2,6 +2,7 @@ const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
+const { shouldUseApi } = require('./llmProvider');
 
 // ─── Text extraction ────────────────────────────────────────────────────────
 
@@ -111,7 +112,7 @@ async function isOllamaAvailable() {
 // ─── Main entry point ───────────────────────────────────────────────────────
 
 async function analyzeResume(resumeText) {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     console.log('[Resume] Using Claude API');
     return analyzeWithClaude(resumeText);
   }
@@ -249,7 +250,7 @@ async function enhanceWithOllama(resumeText, targetRole, targetSkills) {
 }
 
 async function enhanceResume(resumeText, targetRole, targetSkills) {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     console.log('[Resume Enhance] Using Claude API');
     return enhanceWithClaude(resumeText, targetRole, targetSkills);
   }
@@ -422,7 +423,7 @@ async function rewriteResume(resumeText, targetRole, targetSkills, achievements,
     console.log(`[Resume Rewrite] Using Ollama (${model})`);
     return rewriteWithOllama(resumeText, targetRole, targetSkills, achievements, projects, extraSkills, missingKeywords);
   }
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     console.log('[Resume Rewrite] Using Claude API');
     return rewriteWithClaude(resumeText, targetRole, targetSkills, achievements, projects, extraSkills, missingKeywords);
   }
@@ -543,7 +544,7 @@ async function extractStructuredWithOllama(resumeText) {
 }
 
 async function extractStructured(resumeText) {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     console.log('[Resume Extract] Using Claude API');
     return extractStructuredWithClaude(resumeText);
   }

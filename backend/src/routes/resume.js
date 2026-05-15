@@ -3,6 +3,7 @@ const multer = require('multer');
 const { extractText, analyzeResume, enhanceResume, rewriteResume, extractStructured, isOllamaAvailable } = require('../services/resumeAnalyzer');
 const { generateResumePdf, TEMPLATE_LIST } = require('../services/resumePdf');
 const { generateResumeLatex, LATEX_TEMPLATE_LIST } = require('../services/resumeLatex');
+const { shouldUseApi } = require('../services/llmProvider');
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ const upload = multer({
 
 // GET /api/resume/status — tells the frontend which backend is available
 router.get('/status', async (req, res) => {
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     return res.json({ available: true, backend: 'claude' });
   }
   const ollama = await isOllamaAvailable();

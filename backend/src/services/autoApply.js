@@ -7,7 +7,7 @@
 const path = require('path');
 const fs   = require('fs');
 const { chromium } = require('playwright');
-const { callLLM, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE } = require('./llmProvider');
+const { callLLM, shouldUseApi, OLLAMA_MODEL, OLLAMA_BASE } = require('./llmProvider');
 const { UPLOAD_DIR, pool } = require('../db/database');
 
 const SESSION_DIR = path.join(UPLOAD_DIR, '..', 'sessions');
@@ -88,7 +88,7 @@ async function createSession({ userId, site, loginUrl, onLog, timeoutMs = 5 * 60
 }
 
 // Log which LLM will be used at startup
-if (useAnthropic()) {
+if (shouldUseApi('auto-apply')) {
   console.log('[AutoApply] LLM: Anthropic claude-opus-4-7');
 } else {
   console.log(`[AutoApply] LLM: Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE} (set ANTHROPIC_API_KEY to use Claude)`);
@@ -147,14 +147,14 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSo
   let page = null;
 
   try {
-    const provider = useAnthropic()
+    const provider = shouldUseApi('auto-apply')
       ? 'Anthropic claude-opus-4-7'
       : `Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE}`;
     addLog(runId, `LLM provider: ${provider}`);
 
     addLog(runId, 'Launching browser...');
     browser = await chromium.launch({
-      headless: !useAnthropic(),
+      headless: !shouldUseApi('auto-apply'),
       args: ['--disable-blink-features=AutomationControlled'],
     });
 
@@ -181,7 +181,7 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSo
     await page.goto(jobUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
     // ─── System prompt ───────────────────────────────────────────────────────
-    const usingAnthropic = useAnthropic();
+    const usingAnthropic = shouldUseApi('auto-apply');
     const systemPrompt = `You are a job application agent that controls a real web browser.
 You MUST use tools to interact with the browser — never just describe what you would do.
 
@@ -403,7 +403,7 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
         try {
           if (toolName === 'take_screenshot') {
             await page.screenshot({ type: 'png' }); // always take it (visible window)
-            if (useAnthropic()) {
+            if (shouldUseApi('auto-apply')) {
               const screenshotBuffer = await page.screenshot({ type: 'png' });
               const base64 = screenshotBuffer.toString('base64');
               toolResult = {
@@ -582,7 +582,7 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
           } else if (toolName === 'get_page_text') {
             const text = await page.evaluate(() => document.body.innerText);
             // Limit context fed to local models to reduce RAM pressure
-            const limit = useAnthropic() ? 4000 : 1500;
+            const limit = shouldUseApi('auto-apply') ? 4000 : 1500;
             toolResult = {
               type: 'tool_result',
               tool_use_id: toolUseId,
