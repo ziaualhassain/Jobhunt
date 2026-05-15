@@ -1,7 +1,7 @@
 'use strict';
 
 const express = require('express');
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 const path = require('path');
 
 const requireAuth = require('../middleware/auth');
