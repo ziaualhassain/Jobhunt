@@ -87,10 +87,6 @@ async function createSession({ userId, site, loginUrl, onLog, timeoutMs = 5 * 60
   }
 }
 
-module.exports.createSession = createSession;
-module.exports.hasSession    = hasSession;
-module.exports.sessionPath   = sessionPath;
-
 // Log which LLM will be used at startup
 if (useAnthropic()) {
   console.log('[AutoApply] LLM: Anthropic claude-opus-4-7');
@@ -657,4 +653,4 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
   }
 }
 
-module.exports = { startApplyJob, applyJobs };
+module.exports = { startApplyJob, applyJobs, createSession, hasSession, sessionPath };
