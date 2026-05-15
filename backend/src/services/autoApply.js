@@ -5,9 +5,14 @@
 // This downloads the Chromium browser (~200MB) needed for automation.
 
 const { chromium } = require('playwright');
-const Anthropic = require('@anthropic-ai/sdk');
+const { callLLM, useAnthropic, OLLAMA_MODEL, OLLAMA_BASE } = require('./llmProvider');
 
-const client = new Anthropic();
+// Log which LLM will be used at startup
+if (useAnthropic()) {
+  console.log('[AutoApply] LLM: Anthropic claude-opus-4-7');
+} else {
+  console.log(`[AutoApply] LLM: Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE} (set ANTHROPIC_API_KEY to use Claude)`);
+}
 
 // Map of running apply jobs: runId → { status, logs, result }
 const applyJobs = new Map();
@@ -57,6 +62,11 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
   let page = null;
 
   try {
+    const provider = useAnthropic()
+      ? 'Anthropic claude-opus-4-7'
+      : `Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE}`;
+    addLog(runId, `LLM provider: ${provider}`);
+
     addLog(runId, 'Launching browser...');
     browser = await chromium.launch({ headless: false });
     const context = await browser.newContext();
@@ -65,10 +75,11 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, profile, cre
     addLog(runId, `Navigating to ${jobUrl}`);
     await page.goto(jobUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // ─── System prompt (stable — marked for prompt caching) ──────────────────
+    // ─── System prompt ───────────────────────────────────────────────────────
+    const usingAnthropic = useAnthropic();
     const systemPrompt = `You are a job application agent. You control a web browser via tools. \
 Your goal: submit a job application for the candidate using their profile data. \
-Work step by step — take a screenshot first to see the page, then decide what to do. \
+Work step by step — ${usingAnthropic ? 'take a screenshot first to see the page, then' : 'use get_page_text to read the page, then'} decide what to do. \
 Be methodical: fill out every required field, upload the resume when prompted, and click \
 Submit/Apply when all fields are complete. When you are done (success or permanent failure), \
 call the done tool.`;
@@ -200,21 +211,9 @@ Start by taking a screenshot to see the page.`;
     let done = false;
 
     while (!done && toolCallCount < SAFETY_LIMIT) {
-      addLog(runId, `Calling Claude (turn ${toolCallCount + 1})...`);
+      addLog(runId, `Calling LLM (turn ${toolCallCount + 1})...`);
 
-      const response = await client.messages.create({
-        model: 'claude-opus-4-7',
-        max_tokens: 4096,
-        system: [
-          {
-            type: 'text',
-            text: systemPrompt,
-            cache_control: { type: 'ephemeral' },
-          },
-        ],
-        tools,
-        messages,
-      });
+      const response = await callLLM({ systemText: systemPrompt, messages, tools });
 
       // Append assistant response to conversation
       messages.push({ role: 'assistant', content: response.content });
@@ -237,18 +236,24 @@ Start by taking a screenshot to see the page.`;
 
         try {
           if (toolName === 'take_screenshot') {
-            const screenshotBuffer = await page.screenshot({ type: 'png' });
-            const base64 = screenshotBuffer.toString('base64');
-            toolResult = {
-              type: 'tool_result',
-              tool_use_id: toolUseId,
-              content: [
-                {
-                  type: 'image',
-                  source: { type: 'base64', media_type: 'image/png', data: base64 },
-                },
-              ],
-            };
+            await page.screenshot({ type: 'png' }); // always take it (visible window)
+            if (useAnthropic()) {
+              const screenshotBuffer = await page.screenshot({ type: 'png' });
+              const base64 = screenshotBuffer.toString('base64');
+              toolResult = {
+                type: 'tool_result',
+                tool_use_id: toolUseId,
+                content: [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64 } }],
+              };
+            } else {
+              // Ollama text model — return page text instead of image
+              const pageText = await page.evaluate(() => document.body.innerText);
+              toolResult = {
+                type: 'tool_result',
+                tool_use_id: toolUseId,
+                content: `[Text-mode screenshot — use get_page_text for content]\n${pageText.slice(0, 2000)}`,
+              };
+            }
             addLog(runId, 'Screenshot captured');
 
           } else if (toolName === 'click_element') {
