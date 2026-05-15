@@ -105,20 +105,32 @@ function anthropicMessagesToOpenAI(messages) {
   return out;
 }
 
-function openAIToInternal(oaiResponse) {
-  const choice = oaiResponse.choices[0];
-  const msg    = choice.message;
+/**
+ * Normalise Ollama native /api/chat response → internal format.
+ * Differences from OpenAI:
+ *   - Top-level `message` key, not `choices[0].message`
+ *   - `done_reason` instead of `finish_reason`
+ *   - tool_calls[].function.arguments is already an object (not a JSON string)
+ *   - tool_calls have no `id` — we generate one
+ */
+function ollamaToInternal(ollamaResponse) {
+  const msg     = ollamaResponse.message || {};
   const content = [];
 
   if (msg.content) content.push({ type: 'text', text: msg.content });
 
+  const { randomUUID } = require('crypto');
   for (const tc of (msg.tool_calls || [])) {
-    let input = {};
-    try { input = JSON.parse(tc.function.arguments || '{}'); } catch { /* ignore */ }
-    content.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input });
+    const fn = tc.function || {};
+    // arguments may be an object already or a JSON string
+    let input = fn.arguments ?? {};
+    if (typeof input === 'string') {
+      try { input = JSON.parse(input); } catch { input = {}; }
+    }
+    content.push({ type: 'tool_use', id: randomUUID(), name: fn.name, input });
   }
 
-  const stop_reason = choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn';
+  const stop_reason = (msg.tool_calls && msg.tool_calls.length) ? 'tool_use' : 'end_turn';
   return { content, stop_reason };
 }
 
@@ -149,30 +161,42 @@ async function callLLM({ systemText, messages, tools }) {
     return { content: response.content, stop_reason: response.stop_reason };
 
   } else {
-    // Ollama via OpenAI-compatible endpoint
+    // Ollama native /api/chat endpoint (works on all Ollama versions)
     const axios = require('axios');
 
-    const oaiMessages = [
+    const ollamaMessages = [
       { role: 'system', content: systemText },
       ...anthropicMessagesToOpenAI(messages),
     ];
 
     const payload = {
       model: OLLAMA_MODEL,
-      messages: oaiMessages,
+      messages: ollamaMessages,
       stream: false,
     };
 
     const oaiTools = anthropicToolsToOpenAI(tools);
     if (oaiTools.length) payload.tools = oaiTools;
 
-    const response = await axios.post(
-      `${OLLAMA_BASE}/v1/chat/completions`,
-      payload,
-      { timeout: 120000 },
-    );
+    let response;
+    try {
+      response = await axios.post(`${OLLAMA_BASE}/api/chat`, payload, { timeout: 120000 });
+    } catch (err) {
+      // Improve the error message for common failure modes
+      if (err.response?.status === 404) {
+        throw new Error(
+          `Ollama model "${OLLAMA_MODEL}" not found. Run: ollama pull ${OLLAMA_MODEL}`
+        );
+      }
+      if (err.code === 'ECONNREFUSED') {
+        throw new Error(
+          `Cannot connect to Ollama at ${OLLAMA_BASE}. Make sure Ollama is running: ollama serve`
+        );
+      }
+      throw err;
+    }
 
-    return openAIToInternal(response.data);
+    return ollamaToInternal(response.data);
   }
 }
 
