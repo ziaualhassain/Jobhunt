@@ -223,10 +223,13 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
     ];
 
     const SAFETY_LIMIT = 30;
-    let toolCallCount = 0;
-    let done = false;
+    const ERROR_STREAK_LIMIT = 3;  // abort if same error repeats this many times
+    const TOTAL_ERROR_LIMIT  = 8;  // abort if total tool errors exceed this
+    let toolCallCount  = 0;
+    let totalErrors    = 0;
+    let done           = false;
     let consecutiveErrors = 0;
-    let lastErrorMsg = '';
+    let lastErrorMsg   = '';
 
     while (!done && toolCallCount < SAFETY_LIMIT) {
       addLog(runId, `Calling LLM (turn ${toolCallCount + 1})...`);
@@ -280,11 +283,17 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
               ? (input.selector || input.element_id || input.xpath || (input.id ? `#${input.id}` : null))
               : null;
             if (clickSel) {
-              await page.click(clickSel, { timeout: 10000 });
+              try {
+                await page.click(clickSel, { timeout: 5000 });
+              } catch {
+                throw new Error(
+                  `Selector "${clickSel}" not found. Use get_page_text to find the correct selector, then try again.`
+                );
+              }
             } else if (input.x !== undefined && input.y !== undefined) {
               await page.mouse.click(input.x, input.y);
             } else {
-              throw new Error('click_element requires selector (CSS selector) or x/y coordinates');
+              throw new Error('click_element requires "selector" (CSS selector) or "x"/"y" coordinates');
             }
             toolResult = {
               type: 'tool_result',
@@ -301,18 +310,38 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
             };
 
           } else if (toolName === 'fill_input') {
-            // Accept common aliases small models hallucinate instead of 'selector'
+            // Accept common selector aliases small models hallucinate
             const fillSel = input.selector || input.element_id || input.xpath
-              || input.name ? (input.selector || input.element_id || input.xpath || `[name="${input.name}"]`) : null;
-            const fillVal = input.value ?? input.text ?? input.content ?? '';
+              || (input.name ? `[name="${input.name}"]` : null)
+              || (input.id   ? `#${input.id}` : null);
+            // Accept common value aliases
+            const fillVal = input.value ?? input.text ?? input.content ?? input.data ?? null;
+
             if (!fillSel) {
               throw new Error(
-                'fill_input requires a "selector" parameter (CSS selector string, e.g. "#email" or "input[name=email]"). ' +
-                `Received keys: ${Object.keys(input).join(', ')}`
+                'fill_input requires "selector" (CSS selector, e.g. "#email" or "input[name=email]") ' +
+                `AND "value". Received keys: ${Object.keys(input).join(', ')}. ` +
+                'Example: fill_input({"selector": "input[name=email]", "value": "user@example.com"})'
               );
             }
+            if (fillVal === null || fillVal === undefined) {
+              throw new Error(
+                'fill_input requires a "value" parameter. ' +
+                `Received keys: ${Object.keys(input).join(', ')}. ` +
+                'Example: fill_input({"selector": "input[name=email]", "value": "user@example.com"})'
+              );
+            }
+
             const value = fillVal === 'USE_STORED_PASSWORD' ? credentials.password : fillVal;
-            await page.fill(fillSel, String(value ?? ''), { timeout: 10000 });
+            // Short timeout so a bad selector fails fast
+            try {
+              await page.fill(fillSel, String(value ?? ''), { timeout: 5000 });
+            } catch (fillErr) {
+              throw new Error(
+                `Selector "${fillSel}" not found or not fillable. ` +
+                'Use get_page_text to find the correct selector on the page, then try again.'
+              );
+            }
             const displayValue = fillVal === 'USE_STORED_PASSWORD' ? '***' : fillVal;
             toolResult = {
               type: 'tool_result',
@@ -382,19 +411,23 @@ IMPORTANT: You must call a tool now. Start by calling get_page_text to read the 
           addLog(runId, `Tool error (${toolName}): ${toolErr.message}`);
           const errMsg = toolErr.message;
           // Track consecutive identical errors — abort if model is stuck in a loop
+          totalErrors++;
           if (errMsg === lastErrorMsg) {
             consecutiveErrors++;
           } else {
             consecutiveErrors = 1;
             lastErrorMsg = errMsg;
           }
-          if (consecutiveErrors >= 3) {
-            addLog(runId, `Aborting: same error repeated ${consecutiveErrors}x — model is stuck`);
+          if (consecutiveErrors >= ERROR_STREAK_LIMIT || totalErrors >= TOTAL_ERROR_LIMIT) {
+            const reason = consecutiveErrors >= ERROR_STREAK_LIMIT
+              ? `same error repeated ${consecutiveErrors}x`
+              : `${totalErrors} total tool errors`;
+            addLog(runId, `Aborting: ${reason} — model is stuck`);
             done = true;
             const entry = applyJobs.get(runId);
             if (entry) {
               entry.status = 'error';
-              entry.result = { success: false, message: `Agent stuck: ${errMsg}` };
+              entry.result = { success: false, message: `Agent stuck (${reason}): ${errMsg}` };
             }
           }
           toolResult = {
