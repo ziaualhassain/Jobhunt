@@ -122,7 +122,7 @@ function addLog(runId, msg) {
  */
 async function startApplyJob({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSource, jobLocation, profile, credentials, resumePath, site }) {
   // Initialise the job entry
-  applyJobs.set(runId, { status: 'running', logs: [], result: null });
+  applyJobs.set(runId, { status: 'running', logs: [], result: null, resumeResolve: null, pauseReason: null });
   addLog(runId, `Starting apply job for ${jobTitle} at ${jobCompany}`);
 
   // Run the agent loop in the background (do not await here)
@@ -191,8 +191,9 @@ RULES:
 4. Fill every required application field using fill_input or type_text.
 5. For <select> dropdowns, use fill_input with the visible label text (e.g. "No", "Yes", "Full-time").
    fill_input auto-detects select elements and calls selectOption internally.
-6. When the application is submitted OR you hit a permanent blocker, call the done tool.
-7. If the page content is blocked or shows an error, call done with success=false.
+6. When the application is submitted, call the done tool with success=true.
+7. If you encounter a CAPTCHA, 2FA prompt, or anything a human must solve, call wait_for_human — DO NOT call done. The human will act in the browser and then signal you to continue.
+8. If you hit a truly permanent blocker (page error, job already closed), call done with success=false.
 You MUST call done at the end — no exceptions.
 
 SCREENING QUESTIONS — use these default answers unless the candidate profile says otherwise:
@@ -327,6 +328,17 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
             message: { type: 'string', description: 'Summary of what happened' },
           },
           required: ['success', 'message'],
+        },
+      },
+      {
+        name: 'wait_for_human',
+        description: 'Pause and ask the human to take action in the browser (solve a CAPTCHA, approve 2FA, etc.). The browser stays open. Use this instead of done(success=false) whenever a human can unblock the situation.',
+        input_schema: {
+          type: 'object',
+          properties: {
+            reason: { type: 'string', description: 'What the human needs to do, e.g. "Solve the reCAPTCHA on screen then click Continue"' },
+          },
+          required: ['reason'],
         },
       },
     ];
@@ -626,6 +638,28 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
               type: 'tool_result',
               tool_use_id: toolUseId,
               content: `Job application ${input.success ? 'completed' : 'failed'}: ${input.message}`,
+            };
+
+          } else if (toolName === 'wait_for_human') {
+            const reason = input.reason || 'Human action required';
+            addLog(runId, `⏸️ Paused — ${reason}`);
+            const entry = applyJobs.get(runId);
+            if (entry) {
+              entry.status = 'paused';
+              entry.pauseReason = reason;
+            }
+            // Suspend until the /resume endpoint resolves this Promise
+            await new Promise(resolve => {
+              const e = applyJobs.get(runId);
+              if (e) e.resumeResolve = resolve;
+            });
+            const e = applyJobs.get(runId);
+            if (e) { e.status = 'running'; e.resumeResolve = null; e.pauseReason = null; }
+            addLog(runId, '▶️ Resuming — take a screenshot to see the current state');
+            toolResult = {
+              type: 'tool_result',
+              tool_use_id: toolUseId,
+              content: 'Human has completed the action. Call take_screenshot to see the current state and continue.',
             };
 
           } else {

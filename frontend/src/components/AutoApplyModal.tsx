@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Zap, FileText, Loader2, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react'
-import { listResumes, startAutoApply } from '../lib/api'
+import { X, Zap, FileText, Loader2, CheckCircle2, AlertCircle, ChevronDown, PauseCircle, PlayCircle } from 'lucide-react'
+import { listResumes, startAutoApply, resumeAutoApply } from '../lib/api'
 import type { Job } from '../types'
 
 interface Props {
@@ -9,13 +9,16 @@ interface Props {
   onClose: () => void
 }
 
-type Phase = 'setup' | 'running' | 'done' | 'error'
+type Phase = 'setup' | 'running' | 'paused' | 'done' | 'error'
 
 export default function AutoApplyModal({ job, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>('setup')
   const [selectedResumeId, setSelectedResumeId] = useState<number | undefined>()
   const [logs, setLogs] = useState<string[]>([])
   const [result, setResult] = useState<{ status: string; result?: string } | null>(null)
+  const [pauseReason, setPauseReason] = useState<string | null>(null)
+  const [runId, setRunId] = useState<string | null>(null)
+  const [resuming, setResuming] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
 
@@ -51,15 +54,22 @@ export default function AutoApplyModal({ job, onClose }: Props) {
       jobId: job.job_id,
       jobLocation: job.location,
       resumeId: selectedResumeId,
-    }).then(({ runId }) => {
+    }).then(({ runId: id }) => {
+      setRunId(id)
       const token = localStorage.getItem('token')
-      const es = new EventSource(`/api/auto-apply/stream/${runId}?token=${token}`)
+      const es = new EventSource(`/api/auto-apply/stream/${id}?token=${token}`)
       esRef.current = es
 
       es.onmessage = (e) => {
         const data = JSON.parse(e.data)
         if (data.type === 'log') setLogs(prev => [...prev, data.msg])
       }
+
+      es.addEventListener('paused', (e) => {
+        const data = JSON.parse((e as MessageEvent).data)
+        setPauseReason(data.reason ?? 'Human action required')
+        setPhase('paused')
+      })
 
       es.addEventListener('done', (e) => {
         const data = JSON.parse((e as MessageEvent).data)
@@ -77,6 +87,20 @@ export default function AutoApplyModal({ job, onClose }: Props) {
       setLogs(prev => [...prev, `❌ Failed to start: ${err?.response?.data?.error ?? err.message}`])
       setPhase('error')
     })
+  }
+
+  async function handleResume() {
+    if (!runId) return
+    setResuming(true)
+    try {
+      await resumeAutoApply(runId)
+      setPauseReason(null)
+      setPhase('running')
+    } catch {
+      setLogs(prev => [...prev, '⚠️ Could not resume — check the backend.'])
+    } finally {
+      setResuming(false)
+    }
   }
 
   const primaryResume = resumes.find(r => r.id === selectedResumeId)
@@ -155,19 +179,22 @@ export default function AutoApplyModal({ job, onClose }: Props) {
             </>
           )}
 
-          {/* Running phase */}
-          {(phase === 'running' || phase === 'done' || phase === 'error') && (
+          {/* Running / paused / done / error phase */}
+          {(phase === 'running' || phase === 'paused' || phase === 'done' || phase === 'error') && (
             <div className="space-y-3">
-              {/* Status */}
+              {/* Status bar */}
               <div className="flex items-center gap-2">
                 {phase === 'running' && <Loader2 size={14} className="animate-spin text-brand-400" />}
+                {phase === 'paused'  && <PauseCircle size={14} className="text-amber-400" />}
                 {phase === 'done'    && <CheckCircle2 size={14} className="text-emerald-400" />}
                 {phase === 'error'   && <AlertCircle size={14} className="text-red-400" />}
                 <span className={`text-sm font-medium ${
                   phase === 'running' ? 'text-brand-300' :
+                  phase === 'paused'  ? 'text-amber-300' :
                   phase === 'done'    ? 'text-emerald-300' : 'text-red-300'
                 }`}>
                   {phase === 'running' ? 'Agent working…' :
+                   phase === 'paused'  ? 'Waiting for you…' :
                    phase === 'done'    ? 'Application submitted!' : 'Something went wrong'}
                 </span>
               </div>
@@ -182,13 +209,30 @@ export default function AutoApplyModal({ job, onClose }: Props) {
               {/* Log stream */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 h-52 overflow-y-auto font-mono text-[11px] text-slate-400 space-y-1">
                 {logs.map((line, i) => (
-                  <p key={i} className="leading-relaxed">{line}</p>
+                  <p key={i} className={`leading-relaxed ${line.startsWith('⏸️') ? 'text-amber-400' : line.startsWith('▶️') ? 'text-brand-400' : ''}`}>{line}</p>
                 ))}
                 {phase === 'running' && (
                   <p className="text-slate-600 animate-pulse">▌</p>
                 )}
                 <div ref={logsEndRef} />
               </div>
+
+              {/* Paused — human action required */}
+              {phase === 'paused' && pauseReason && (
+                <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 space-y-2.5">
+                  <p className="text-xs text-amber-300 font-medium">🧩 Human action needed</p>
+                  <p className="text-xs text-amber-200/80">{pauseReason}</p>
+                  <p className="text-[10px] text-amber-300/60">The browser window is open on your machine. Complete the action, then click Continue below.</p>
+                  <button
+                    onClick={handleResume}
+                    disabled={resuming}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition-colors disabled:opacity-50"
+                  >
+                    {resuming ? <Loader2 size={11} className="animate-spin" /> : <PlayCircle size={11} />}
+                    {resuming ? 'Resuming…' : 'Continue — I\'ve completed the action'}
+                  </button>
+                </div>
+              )}
 
               {/* Result message */}
               {result?.result && (
@@ -204,7 +248,7 @@ export default function AutoApplyModal({ job, onClose }: Props) {
                 onClick={onClose}
                 className="w-full px-4 py-2 rounded-xl border border-slate-700 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
               >
-                {phase === 'running' ? 'Close (agent continues in background)' : 'Close'}
+                {phase === 'running' || phase === 'paused' ? 'Close (agent continues in background)' : 'Close'}
               </button>
             </div>
           )}

@@ -164,6 +164,10 @@ export async function checkSessionStatus(site: string): Promise<{ hasSession: bo
 
 /** Opens an SSE stream that triggers a visible browser login flow on the server.
  *  Listen for `message` events (log lines) and the `done` event (saved/error). */
+export async function resumeAutoApply(runId: string): Promise<void> {
+  await api.post(`/auto-apply/resume/${runId}`)
+}
+
 export function createSessionSSE(site: string): EventSource {
   const token = localStorage.getItem('token') ?? ''
   return new EventSource(`/api/auto-apply/create-session/${encodeURIComponent(site)}?token=${encodeURIComponent(token)}`)

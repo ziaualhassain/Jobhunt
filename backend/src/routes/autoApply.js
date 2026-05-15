@@ -158,18 +158,18 @@ router.post('/start', async (req, res) => {
 
 // GET /api/auto-apply/stream/:runId
 // SSE endpoint — streams log entries the client hasn't seen yet, every 1s
-// Sends event: done when status is complete or error
+// Events: (default) log line | paused | done | error
 router.get('/stream/:runId', (req, res) => {
   const { runId } = req.params;
 
-  // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   let lastSentIndex = 0;
+  let sentPauseReason = null; // dedupe paused events
 
   function sendPending() {
     const entry = applyJobs.get(runId);
@@ -186,7 +186,17 @@ router.get('/stream/:runId', (req, res) => {
     }
     lastSentIndex += newLogs.length;
 
-    // Check if job is terminal
+    // Paused — send once per unique pause reason, keep stream open
+    if (entry.status === 'paused' && sentPauseReason !== entry.pauseReason) {
+      res.write(`event: paused\ndata: ${JSON.stringify({ reason: entry.pauseReason })}\n\n`);
+      sentPauseReason = entry.pauseReason;
+    }
+    // Reset when agent resumes
+    if (entry.status === 'running' && sentPauseReason !== null) {
+      sentPauseReason = null;
+    }
+
+    // Terminal
     if (entry.status === 'complete' || entry.status === 'error') {
       res.write(`event: done\ndata: ${JSON.stringify({ status: entry.status, result: entry.result })}\n\n`);
       cleanup();
@@ -200,12 +210,20 @@ router.get('/stream/:runId', (req, res) => {
     res.end();
   }
 
-  // Send initial check immediately
   sendPending();
-
-  // Clean up if client disconnects
   req.on('close', cleanup);
   req.on('aborted', cleanup);
+});
+
+// POST /api/auto-apply/resume/:runId
+// Unblocks a paused agent (after the user solved a CAPTCHA / 2FA in the browser)
+router.post('/resume/:runId', (req, res) => {
+  const { runId } = req.params;
+  const entry = applyJobs.get(runId);
+  if (!entry) return res.status(404).json({ error: 'Job not found' });
+  if (entry.status !== 'paused') return res.status(400).json({ error: 'Job is not paused' });
+  if (entry.resumeResolve) entry.resumeResolve();
+  res.json({ ok: true });
 });
 
 // Default login pages per supported site
