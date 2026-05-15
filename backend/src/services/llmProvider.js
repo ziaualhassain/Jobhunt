@@ -16,8 +16,12 @@
  */
 
 const OLLAMA_BASE  = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-// llama3.2:1b is ~1.3 GB vs llama3.1's ~8 GB — much easier on a laptop
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || 'llama3.2:1b';
+// Best models for tool-calling (ranked by capability):
+//   claude-opus-4-7  → set ANTHROPIC_API_KEY          (best — cloud)
+//   qwen2.5          → ollama pull qwen2.5   (~4.7 GB) (best local)
+//   llama3.1         → ollama pull llama3.1  (~4.7 GB) (good local)
+//   llama3.2:1b      → ollama pull llama3.2:1b (~1.3GB) (too small for CSS selectors)
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL    || 'qwen2.5';
 
 function useAnthropic() { return !!process.env.ANTHROPIC_API_KEY; }
 
