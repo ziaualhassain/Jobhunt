@@ -315,9 +315,9 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
       { role: 'user', content: initialMessage },
     ];
 
-    const SAFETY_LIMIT = 30;
+    const SAFETY_LIMIT = 60;
     const ERROR_STREAK_LIMIT = 3;  // abort if same error repeats this many times
-    const TOTAL_ERROR_LIMIT  = 8;  // abort if total tool errors exceed this
+    const TOTAL_ERROR_LIMIT  = 12; // abort if total tool errors exceed this
     let toolCallCount  = 0;
     let totalErrors    = 0;
     let done           = false;
