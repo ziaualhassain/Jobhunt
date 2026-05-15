@@ -1,7 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Save, Loader2, CheckCircle2, AlertCircle, X, PenLine, LogOut, ShieldCheck, Sliders } from 'lucide-react'
-import { getProfile, updateProfile } from '../lib/api'
+import {
+  Save, Loader2, CheckCircle2, AlertCircle, X, PenLine, LogOut,
+  ShieldCheck, Sliders, FileText, Upload, Star, Trash2, Lock, Plus,
+  Phone, Link2, Briefcase, DollarSign, Clock, Globe,
+} from 'lucide-react'
+import {
+  getProfile, updateProfile,
+  getApplicationProfile, updateApplicationProfile,
+  listResumes, uploadResume, setResumeAsPrimary, deleteResume,
+  listCredentials, upsertCredential, deleteCredential,
+} from '../lib/api'
+import type { ApplicationProfile, UserResume, JobCredential } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const INTEREST_GROUPS = [
@@ -14,18 +24,389 @@ const INTEREST_GROUPS = [
 const EXPERIENCE_LEVELS = ['Junior', 'Mid-level', 'Senior', 'Lead', 'Staff', 'Principal']
 const JOB_TYPES = ['Full-time', 'Contract', 'Part-time', 'Freelance']
 
+const JOB_SITES = [
+  { id: 'linkedin',    label: 'LinkedIn',    url: 'linkedin.com' },
+  { id: 'naukri',     label: 'Naukri',      url: 'naukri.com' },
+  { id: 'indeed',     label: 'Indeed',      url: 'indeed.com' },
+  { id: 'glassdoor',  label: 'Glassdoor',   url: 'glassdoor.com' },
+  { id: 'monster',    label: 'Monster',     url: 'monster.com' },
+  { id: 'shine',      label: 'Shine',       url: 'shine.com' },
+  { id: 'foundit',    label: 'Foundit',     url: 'foundit.in' },
+  { id: 'internshala',label: 'Internshala', url: 'internshala.com' },
+]
+
+function fmtBytes(b: number) {
+  if (b < 1024) return `${b} B`
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`
+  return `${(b / 1048576).toFixed(1)} MB`
+}
+
+// ── Application Profile section ──────────────────────────────────────────────
+
+function ApplicationProfileSection() {
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({ queryKey: ['applicationProfile'], queryFn: getApplicationProfile })
+
+  const [form, setForm] = useState<ApplicationProfile>({})
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    if (data) setForm(data)
+  }, [data])
+
+  const mutation = useMutation({
+    mutationFn: updateApplicationProfile,
+    onSuccess: (updated) => {
+      qc.setQueryData(['applicationProfile'], updated)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    },
+  })
+
+  function set(key: keyof ApplicationProfile, val: string) {
+    setForm(f => ({ ...f, [key]: val }))
+  }
+
+  if (isLoading) return <div className="flex items-center gap-2 text-slate-500 text-sm py-2"><Loader2 size={13} className="animate-spin" />Loading…</div>
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Phone size={10} />Phone</label>
+          <input className="input w-full" placeholder="+91 98765 43210" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Link2 size={10} />LinkedIn URL</label>
+          <input className="input w-full" placeholder="https://linkedin.com/in/…" value={form.linkedinUrl ?? ''} onChange={e => set('linkedinUrl', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Globe size={10} />GitHub URL</label>
+          <input className="input w-full" placeholder="https://github.com/…" value={form.githubUrl ?? ''} onChange={e => set('githubUrl', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Globe size={10} />Portfolio / Website</label>
+          <input className="input w-full" placeholder="https://yoursite.com" value={form.portfolioUrl ?? ''} onChange={e => set('portfolioUrl', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><DollarSign size={10} />Current CTC</label>
+          <input className="input w-full" placeholder="e.g. 12 LPA" value={form.currentCTC ?? ''} onChange={e => set('currentCTC', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><DollarSign size={10} />Expected CTC</label>
+          <input className="input w-full" placeholder="e.g. 18 LPA" value={form.expectedCTC ?? ''} onChange={e => set('expectedCTC', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Clock size={10} />Notice Period</label>
+          <input className="input w-full" placeholder="e.g. 30 days, Immediate" value={form.noticePeriod ?? ''} onChange={e => set('noticePeriod', e.target.value)} />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-slate-500 mb-1 flex items-center gap-1"><Briefcase size={10} />Professional Summary / Cover Note</label>
+        <textarea
+          className="input w-full resize-none"
+          rows={4}
+          placeholder="A short intro the agent will use when filling application forms…"
+          value={form.intro ?? ''}
+          onChange={e => set('intro', e.target.value)}
+        />
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => mutation.mutate(form)}
+          disabled={mutation.isPending}
+          className="btn-primary flex items-center gap-2 text-sm px-4 py-2"
+        >
+          {mutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+          Save
+        </button>
+        {saved && <span className="flex items-center gap-1.5 text-emerald-400 text-sm"><CheckCircle2 size={13} />Saved</span>}
+        {mutation.isError && (
+          <span className="flex items-center gap-1.5 text-red-400 text-sm">
+            <AlertCircle size={13} />
+            {(mutation.error as {response?:{data?:{error?:string}}})?.response?.data?.error ?? 'Save failed'}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Resumes section ──────────────────────────────────────────────────────────
+
+function ResumesSection() {
+  const qc = useQueryClient()
+  const { data: resumes = [], isLoading } = useQuery({ queryKey: ['resumes'], queryFn: listResumes })
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [label, setLabel] = useState('')
+  const [uploading, setUploading] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
+
+  const primaryMutation = useMutation({
+    mutationFn: setResumeAsPrimary,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['resumes'] }),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteResume,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['resumes'] }),
+  })
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadErr('')
+    setUploading(true)
+    try {
+      await uploadResume(file, label || file.name.replace(/\.[^.]+$/, ''))
+      await qc.invalidateQueries({ queryKey: ['resumes'] })
+      setLabel('')
+      if (fileRef.current) fileRef.current.value = ''
+    } catch (err: unknown) {
+      const axiosErr = err as {response?:{data?:{error?:string}}}
+      setUploadErr(axiosErr?.response?.data?.error ?? 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Upload row */}
+      <div className="rounded-xl border border-dashed border-slate-700 p-4 space-y-3">
+        <div>
+          <label className="block text-xs text-slate-500 mb-1">Label <span className="text-slate-600">(optional)</span></label>
+          <input
+            className="input w-full"
+            placeholder="e.g. Senior Dev Resume, Startup Version"
+            value={label}
+            onChange={e => setLabel(e.target.value)}
+          />
+        </div>
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.doc,.docx"
+            className="hidden"
+            onChange={handleUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 text-sm text-slate-300 hover:border-brand-500 hover:text-brand-300 transition-colors disabled:opacity-50"
+          >
+            {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            {uploading ? 'Uploading…' : 'Choose file (PDF / DOCX)'}
+          </button>
+          {uploadErr && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={11} />{uploadErr}</p>}
+        </div>
+      </div>
+
+      {/* Resume list */}
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-slate-500 text-sm"><Loader2 size={13} className="animate-spin" />Loading…</div>
+      ) : resumes.length === 0 ? (
+        <p className="text-sm text-slate-500 text-center py-4">No resumes yet — upload one above.</p>
+      ) : (
+        <div className="space-y-2">
+          {resumes.map((r: UserResume) => (
+            <div key={r.id} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 border ${r.is_primary ? 'border-brand-500/40 bg-brand-500/5' : 'border-slate-700 bg-slate-800/40'}`}>
+              <FileText size={14} className={r.is_primary ? 'text-brand-400 shrink-0' : 'text-slate-500 shrink-0'} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm text-slate-200 truncate font-medium">{r.label}</p>
+                <p className="text-xs text-slate-500 truncate">{r.original_name} · {fmtBytes(r.file_size)}</p>
+              </div>
+              {r.is_primary && (
+                <span className="flex items-center gap-1 text-[10px] text-brand-400 font-semibold bg-brand-500/10 border border-brand-500/20 rounded px-1.5 py-0.5 shrink-0">
+                  <Star size={9} />Primary
+                </span>
+              )}
+              {!r.is_primary && (
+                <button
+                  type="button"
+                  onClick={() => primaryMutation.mutate(r.id)}
+                  disabled={primaryMutation.isPending}
+                  title="Set as primary"
+                  className="text-xs text-slate-500 hover:text-brand-400 transition-colors px-2 py-1 rounded hover:bg-slate-700 shrink-0"
+                >
+                  <Star size={12} />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Delete "${r.label}"?`)) deleteMutation.mutate(r.id)
+                }}
+                disabled={deleteMutation.isPending}
+                title="Delete"
+                className="text-slate-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-900/20 shrink-0"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Job Site Credentials section ─────────────────────────────────────────────
+
+function CredentialsSection() {
+  const qc = useQueryClient()
+  const { data: creds = [], isLoading } = useQuery({ queryKey: ['credentials'], queryFn: listCredentials })
+
+  const [addingSite, setAddingSite] = useState<string | null>(null)
+  const [siteEmail, setSiteEmail] = useState('')
+  const [sitePassword, setSitePassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saveErr, setSaveErr] = useState('')
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCredential,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['credentials'] }),
+  })
+
+  async function saveCred() {
+    if (!addingSite || !siteEmail || !sitePassword) return
+    setSaveErr('')
+    setSaving(true)
+    try {
+      await upsertCredential(addingSite, siteEmail, sitePassword)
+      await qc.invalidateQueries({ queryKey: ['credentials'] })
+      setAddingSite(null)
+      setSiteEmail('')
+      setSitePassword('')
+    } catch (err: unknown) {
+      const axiosErr = err as {response?:{data?:{error?:string}}}
+      setSaveErr(axiosErr?.response?.data?.error ?? 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startAdd(site: string) {
+    setAddingSite(site)
+    setSiteEmail('')
+    setSitePassword('')
+    setSaveErr('')
+  }
+
+  const credMap = new Map((creds as JobCredential[]).map(c => [c.site, c]))
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">Credentials are stored with AES-256 encryption and only used by the auto-apply agent on your device.</p>
+
+      <div className="space-y-2">
+        {JOB_SITES.map(site => {
+          const existing = credMap.get(site.id)
+          const isAdding = addingSite === site.id
+
+          return (
+            <div key={site.id} className={`rounded-xl border p-3 space-y-2 ${existing ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-slate-700 bg-slate-800/30'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Lock size={12} className={existing ? 'text-emerald-400' : 'text-slate-600'} />
+                  <div>
+                    <p className="text-sm font-medium text-slate-200">{site.label}</p>
+                    <p className="text-xs text-slate-600">{site.url}</p>
+                  </div>
+                  {existing && (
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5 font-medium">
+                      ✓ {existing.site_email}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {existing && (
+                    <button
+                      type="button"
+                      onClick={() => { if (confirm(`Remove credentials for ${site.label}?`)) deleteMutation.mutate(existing.id) }}
+                      className="text-slate-600 hover:text-red-400 transition-colors p-1 rounded hover:bg-red-900/20"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => isAdding ? setAddingSite(null) : startAdd(site.id)}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors"
+                  >
+                    {isAdding ? <X size={10} /> : <Plus size={10} />}
+                    {existing ? 'Update' : 'Add'}
+                  </button>
+                </div>
+              </div>
+
+              {isAdding && (
+                <div className="space-y-2 pt-1 border-t border-slate-700">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-1">Email / Username</label>
+                      <input
+                        className="input w-full text-sm"
+                        type="email"
+                        placeholder={`your@email.com`}
+                        value={siteEmail}
+                        onChange={e => setSiteEmail(e.target.value)}
+                        autoFocus
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-slate-500 mb-1">Password</label>
+                      <input
+                        className="input w-full text-sm"
+                        type="password"
+                        placeholder="••••••••"
+                        value={sitePassword}
+                        onChange={e => setSitePassword(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  {saveErr && <p className="text-xs text-red-400 flex items-center gap-1"><AlertCircle size={10} />{saveErr}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={saveCred}
+                      disabled={saving || !siteEmail || !sitePassword}
+                      className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5"
+                    >
+                      {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                      Save
+                    </button>
+                    <button type="button" onClick={() => setAddingSite(null)} className="btn-ghost text-xs px-3 py-1.5">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {isLoading && <div className="flex items-center gap-2 text-slate-500 text-sm"><Loader2 size={13} className="animate-spin" />Loading…</div>}
+    </div>
+  )
+}
+
+// ── Main ProfilePage ─────────────────────────────────────────────────────────
+
 export default function ProfilePage() {
   const { user, login, logout, token } = useAuth()
   const qc = useQueryClient()
 
   const { data: profile, isLoading } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
 
-  // ── Account edit state ────────────────────────────────────────────────────
   const [editingAccount, setEditingAccount] = useState(false)
   const [editName, setEditName] = useState('')
   const [editBio, setEditBio] = useState('')
 
-  // ── Preferences state ─────────────────────────────────────────────────────
   const [interests, setInterests] = useState<string[]>([])
   const [keywords, setKeywords] = useState('')
   const [experienceLevel, setExperienceLevel] = useState('')
@@ -34,10 +415,8 @@ export default function ProfilePage() {
   const [location, setLocation] = useState('')
   const [remote, setRemote] = useState(true)
 
-  // ── Password state ────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
-
   const [successMsg, setSuccessMsg] = useState('')
 
   useEffect(() => {
@@ -201,6 +580,42 @@ export default function ProfilePage() {
         )}
       </div>
 
+      {/* ── Application Profile ──────────────────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Briefcase size={14} strokeWidth={1.75} className="text-brand-400" />
+          <div>
+            <h2 className="font-semibold text-slate-200 text-sm">Application Profile</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Used by the auto-apply agent to fill application forms</p>
+          </div>
+        </div>
+        <ApplicationProfileSection />
+      </div>
+
+      {/* ── My Resumes ──────────────────────────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <FileText size={14} strokeWidth={1.75} className="text-brand-400" />
+          <div>
+            <h2 className="font-semibold text-slate-200 text-sm">My Resumes</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Upload multiple resumes — the ★ primary is used by default</p>
+          </div>
+        </div>
+        <ResumesSection />
+      </div>
+
+      {/* ── Job Site Credentials ─────────────────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Lock size={14} strokeWidth={1.75} className="text-brand-400" />
+          <div>
+            <h2 className="font-semibold text-slate-200 text-sm">Job Site Credentials</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Saved securely so the agent can log in on your behalf</p>
+          </div>
+        </div>
+        <CredentialsSection />
+      </div>
+
       {/* ── Job preferences ─────────────────────────────────────────────── */}
       <form onSubmit={handleSavePrefs} className="space-y-5">
         <div className="card p-5 space-y-4">
@@ -354,7 +769,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* ── Footer ──────────────────────────────────────────────────────── */}
       <p className="text-center text-xs text-slate-600 pb-2">
         Made with <span className="text-red-400">♥</span> by Team Insighters &copy; 2026
       </p>

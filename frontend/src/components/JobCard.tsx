@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, Bot, Loader2, AlertCircle } from 'lucide-react'
+import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, Bot, Loader2, AlertCircle, Zap } from 'lucide-react'
 import type { Job } from '../types'
 import type { FitScore } from '../lib/jobScorer'
 import { scoreColor, scoreLabel } from '../lib/jobScorer'
@@ -8,6 +8,7 @@ import type { ResumeAnalysis } from '../lib/api'
 import { deepScoreJob } from '../lib/api'
 import type { DeepScore } from '../lib/api'
 import { PERCENTAGE_ENABLE } from '../lib/config'
+import AutoApplyModal from './AutoApplyModal'
 
 const SOURCE_COLORS: Record<string, string> = {
   RemoteOK:           'bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800',
@@ -44,6 +45,7 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
   const [expanded, setExpanded] = useState(false)
   const [scoreOpen, setScoreOpen] = useState(false)
   const [aiScore, setAiScore] = useState<DeepScore | null>(null)
+  const [autoApplyOpen, setAutoApplyOpen] = useState(false)
 
   const sourceClass = SOURCE_COLORS[job.source] ?? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
   const tags = job.tags ? job.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) : []
@@ -210,6 +212,17 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
               View Job
             </a>
 
+            {job.url && (
+              <button
+                type="button"
+                onClick={() => setAutoApplyOpen(true)}
+                className="flex items-center gap-1.5 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors"
+              >
+                <Zap size={12} />
+                Auto Apply
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => onSave(job)}
@@ -224,6 +237,10 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           </div>
         </div>
       </div>
+
+      {autoApplyOpen && (
+        <AutoApplyModal job={job} onClose={() => setAutoApplyOpen(false)} />
+      )}
     </article>
   )
 }

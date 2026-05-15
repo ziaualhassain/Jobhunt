@@ -66,6 +66,95 @@ export async function updateProfile(data: {
   return res.data;
 }
 
+// ── Application Profile ───────────────────────────────────────────────────────
+
+export interface ApplicationProfile {
+  phone?: string
+  linkedinUrl?: string
+  githubUrl?: string
+  portfolioUrl?: string
+  intro?: string
+  currentCTC?: string
+  expectedCTC?: string
+  noticePeriod?: string
+}
+
+export interface UserResume {
+  id: number
+  label: string
+  original_name: string
+  file_size: number
+  is_primary: boolean
+  created_at: string
+}
+
+export interface JobCredential {
+  id: number
+  site: string
+  site_email: string
+  created_at: string
+}
+
+export async function getApplicationProfile(): Promise<ApplicationProfile> {
+  const res = await api.get('/application-profile')
+  return res.data
+}
+
+export async function updateApplicationProfile(data: ApplicationProfile): Promise<ApplicationProfile> {
+  const res = await api.put('/application-profile', data)
+  return res.data
+}
+
+export async function listResumes(): Promise<UserResume[]> {
+  const res = await api.get('/application-profile/resumes')
+  return res.data
+}
+
+export async function uploadResume(file: File, label: string): Promise<UserResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('label', label)
+  const res = await api.post('/application-profile/resumes', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function setResumeAsPrimary(id: number): Promise<void> {
+  await api.patch(`/application-profile/resumes/${id}/primary`)
+}
+
+export async function deleteResume(id: number): Promise<void> {
+  await api.delete(`/application-profile/resumes/${id}`)
+}
+
+export async function listCredentials(): Promise<JobCredential[]> {
+  const res = await api.get('/application-profile/credentials')
+  return res.data
+}
+
+export async function upsertCredential(site: string, email: string, password: string): Promise<JobCredential> {
+  const res = await api.post('/application-profile/credentials', { site, email, password })
+  return res.data
+}
+
+export async function deleteCredential(id: number): Promise<void> {
+  await api.delete(`/application-profile/credentials/${id}`)
+}
+
+// ── Auto Apply ────────────────────────────────────────────────────────────────
+
+export async function startAutoApply(data: {
+  jobUrl: string
+  jobTitle: string
+  jobCompany: string
+  jobSource: string
+  resumeId?: number
+}): Promise<{ runId: string }> {
+  const res = await api.post('/auto-apply/start', data)
+  return res.data
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {
