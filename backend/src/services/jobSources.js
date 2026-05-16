@@ -247,7 +247,11 @@ const TECH_KEYWORDS = [
 async function aggregateJobs(filters = {}) {
   const { keywords = [], tags = [], jobType = '', location = '', experienceLevel = '', remote = true, region = '' } = filters;
 
-  const searchKeywords = keywords.length > 0 ? keywords : TECH_KEYWORDS.slice(0, 6);
+  // Use both keywords AND interests/tags as search terms for API calls.
+  // Previously, tags were never sent to live sources — so a user with only interests
+  // (and no custom keywords) got generic fallback results.
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+  const searchKeywords = allSignals.length > 0 ? allSignals : TECH_KEYWORDS.slice(0, 6);
 
   const [remoteOK, wwr, himalayas, arbeitNow] = await Promise.allSettled([
     fetchRemoteOK(searchKeywords, tags),
@@ -263,25 +267,20 @@ async function aggregateJobs(filters = {}) {
     ...(arbeitNow.status === 'fulfilled' ? arbeitNow.value : []),
   ];
 
-  // Keyword filter — word-level match, OR across keywords, AND across words within a keyword
-  if (keywords.length > 0) {
+  // Combined relevance filter: a job qualifies if it matches ANY keyword OR ANY tag.
+  // Previously these were two separate AND filters, which eliminated most results.
+  if (keywords.length > 0 || tags.length > 0) {
     allJobs = allJobs.filter(job => {
       const text = `${job.title} ${job.company} ${job.description} ${job.tags} ${job.location}`;
-      return matchesKeywords(text, keywords);
-    });
-  }
-
-  // Tag filter — each tag is split into words (AND), tags are OR-ed
-  if (tags.length > 0) {
-    allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.tags} ${job.description}`.toLowerCase();
-      return tags.some(tag =>
-        tag.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 1).every(w => text.includes(w))
+      const kwMatch = keywords.length === 0 || matchesKeywords(text, keywords);
+      const tagMatch = tags.length === 0 || tags.some(tag =>
+        tag.toLowerCase().split(/[\s\/]+/).filter(w => w.length > 1).every(w => text.toLowerCase().includes(w))
       );
+      return kwMatch || tagMatch;
     });
   }
 
-  // Location + remote filter — all four combinations always applied
+  // Location + remote filter
   const loc = location.toLowerCase();
   allJobs = allJobs.filter(job => {
     const jobLoc = (job.location || '').toLowerCase();
@@ -289,36 +288,27 @@ async function aggregateJobs(filters = {}) {
       jobLoc.includes('worldwide') || jobLoc.includes('global') || jobLoc.includes('international');
     const matchesLoc = loc ? jobLoc.includes(loc) : false;
 
-    if (loc && remote)   return matchesLoc || isRemote; // city + remote ON: either
-    if (loc && !remote)  return matchesLoc;              // city + remote OFF: city only
-    if (!loc && remote)  return isRemote;                // no city + remote ON: remote only
-    /* !loc && !remote */return true;                    // no constraint: show all
+    if (loc && remote)   return matchesLoc || isRemote;
+    if (loc && !remote)  return matchesLoc;
+    if (!loc && remote)  return isRemote;
+    return true;
   });
 
-  // Experience level filter — match against title and description
-  if (experienceLevel) {
-    const level = experienceLevel.toLowerCase();
-    allJobs = allJobs.filter(job => {
-      const text = `${job.title} ${job.description}`.toLowerCase();
-      return text.includes(level);
-    });
-  }
+  // Note: experienceLevel and jobType are intentionally NOT filtered here.
+  // Live job boards rarely tag seniority consistently; the client-side fit scorer
+  // handles seniority ranking without eliminating valid jobs.
 
-  // Job type filter
+  // Job type filter (only when the data is likely reliable)
   if (jobType) {
     allJobs = allJobs.filter(job =>
       (job.job_type || '').toLowerCase().includes(jobType.toLowerCase())
     );
   }
 
-  // Region filter.
-  // When a specific country is selected (e.g. India), include both country-specific
-  // jobs AND remote jobs — remote jobs are relevant to users in any country.
-  // When Remote is explicitly selected, show only remote jobs.
+  // Region filter
   if (region && region !== 'Remote') {
     allJobs = allJobs.filter(job => {
       const jobRegion = job.region || classifyRegion(job.location);
-      // Include Remote jobs alongside the selected country only when remote is enabled.
       return jobRegion === region || (remote !== false && jobRegion === 'Remote');
     });
   } else if (region === 'Remote') {

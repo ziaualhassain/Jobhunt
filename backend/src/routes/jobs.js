@@ -17,7 +17,7 @@ const STOP_WORDS = new Set([
 
 // Query TheirStack jobs stored in the DB
 async function getTheirStackJobs(filters) {
-  const { keywords = [], tags = [], location = '', experienceLevel = '', jobType = '', remote = true, region = '' } = filters;
+  const { keywords = [], tags = [], location = '', remote = true, region = '' } = filters;
 
   const conditions = [];
   const params = [];
@@ -28,26 +28,19 @@ async function getTheirStackJobs(filters) {
     conditions.push(`region = $${params.length}`);
   }
 
-  if (keywords.length > 0) {
-    const kwConditions = keywords.flatMap(kw => {
-      const words = kw.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+  // Unified relevance: keywords OR tags — any signal match qualifies the row
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+  if (allSignals.length > 0) {
+    const signalClauses = allSignals.flatMap(signal => {
+      const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
       if (words.length === 0) return [];
-      const wordClauses = words.map(w => {
+      return words.map(w => {
         params.push(`%${w}%`);
         const i = params.length;
-        return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i} OR LOWER(location) LIKE $${i})`;
+        return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i})`;
       });
-      return [`(${wordClauses.join(' OR ')})`];
     });
-    if (kwConditions.length > 0) conditions.push(`(${kwConditions.join(' OR ')})`);
-  }
-
-  if (tags.length > 0) {
-    const tagConditions = tags.map(t => {
-      params.push(`%${t.toLowerCase()}%`);
-      return `LOWER(tags) LIKE $${params.length}`;
-    });
-    conditions.push(`(${tagConditions.join(' OR ')})`);
+    if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
   }
 
   if (location) {
@@ -58,17 +51,6 @@ async function getTheirStackJobs(filters) {
     } else {
       conditions.push(`(LOWER(location) LIKE $${params.length} AND LOWER(location) NOT LIKE '%remote%' AND LOWER(location) NOT LIKE '%anywhere%')`);
     }
-  }
-
-  if (experienceLevel) {
-    params.push(`%${experienceLevel.toLowerCase()}%`);
-    const i = params.length;
-    conditions.push(`(LOWER(title) LIKE $${i} OR LOWER(description) LIKE $${i})`);
-  }
-
-  if (jobType) {
-    params.push(`%${jobType.toLowerCase()}%`);
-    conditions.push(`LOWER(job_type) LIKE $${params.length}`);
   }
 
   let sql = 'SELECT * FROM theirstack_jobs';
