@@ -66,6 +66,146 @@ export async function updateProfile(data: {
   return res.data;
 }
 
+// ── Application Profile ───────────────────────────────────────────────────────
+
+export interface ApplicationProfile {
+  phone?: string
+  linkedinUrl?: string
+  githubUrl?: string
+  portfolioUrl?: string
+  intro?: string
+  currentCTC?: string
+  expectedCTC?: string
+  noticePeriod?: string
+}
+
+export interface UserResume {
+  id: number
+  label: string
+  original_name: string
+  file_size: number
+  is_primary: boolean
+  created_at: string
+}
+
+export interface JobCredential {
+  id: number
+  site: string
+  site_email: string
+  created_at: string
+}
+
+export interface Questionnaire {
+  // Work authorization
+  workAuthorized?: string         // 'yes' | 'no'
+  requiresSponsorship?: string    // 'yes' | 'no'
+  citizenshipStatus?: string      // 'citizen' | 'permanent_resident' | 'work_visa' | 'student_visa' | 'other'
+  // Education
+  highestDegree?: string          // 'high_school' | 'associate' | 'bachelor' | 'master' | 'phd' | 'other'
+  degreeField?: string
+  university?: string
+  graduationYear?: string
+  // Work preferences
+  willingToRelocate?: string      // 'yes' | 'no' | 'open'
+  preferredWorkMode?: string      // 'remote' | 'hybrid' | 'onsite' | 'flexible'
+  // EEO / diversity
+  gender?: string
+  veteranStatus?: string          // 'no' | 'yes' | 'prefer_not_to_say'
+  disabilityStatus?: string       // 'no' | 'yes' | 'prefer_not_to_say'
+  ethnicity?: string
+  // Other
+  languages?: string
+  drivingLicense?: string         // 'yes' | 'no'
+}
+
+export async function getQuestionnaire(): Promise<Questionnaire> {
+  const res = await api.get('/application-profile/questionnaire')
+  return res.data
+}
+
+export async function updateQuestionnaire(data: Questionnaire): Promise<Questionnaire> {
+  const res = await api.put('/application-profile/questionnaire', data)
+  return res.data
+}
+
+export async function getApplicationProfile(): Promise<ApplicationProfile> {
+  const res = await api.get('/application-profile')
+  return res.data
+}
+
+export async function updateApplicationProfile(data: ApplicationProfile): Promise<ApplicationProfile> {
+  const res = await api.put('/application-profile', data)
+  return res.data
+}
+
+export async function listResumes(): Promise<UserResume[]> {
+  const res = await api.get('/application-profile/resumes')
+  return res.data
+}
+
+export async function uploadResume(file: File, label: string): Promise<UserResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('label', label)
+  const res = await api.post('/application-profile/resumes', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function setResumeAsPrimary(id: number): Promise<void> {
+  await api.patch(`/application-profile/resumes/${id}/primary`)
+}
+
+export async function deleteResume(id: number): Promise<void> {
+  await api.delete(`/application-profile/resumes/${id}`)
+}
+
+export async function listCredentials(): Promise<JobCredential[]> {
+  const res = await api.get('/application-profile/credentials')
+  return res.data
+}
+
+export async function upsertCredential(site: string, email: string, password: string): Promise<JobCredential> {
+  const res = await api.post('/application-profile/credentials', { site, email, password })
+  return res.data
+}
+
+export async function deleteCredential(id: number): Promise<void> {
+  await api.delete(`/application-profile/credentials/${id}`)
+}
+
+// ── Auto Apply ────────────────────────────────────────────────────────────────
+
+export async function startAutoApply(data: {
+  jobUrl: string
+  jobTitle: string
+  jobCompany: string
+  jobSource: string
+  jobId?: string
+  jobLocation?: string
+  resumeId?: number
+}): Promise<{ runId: string }> {
+  const res = await api.post('/auto-apply/start', data)
+  return res.data
+}
+
+export async function checkSessionStatus(site: string): Promise<{ hasSession: boolean }> {
+  const res = await api.get(`/auto-apply/session-status/${site}`)
+  return res.data
+}
+
+/** Opens an SSE stream that triggers a visible browser login flow on the server.
+ *  Listen for `message` events (log lines) and the `done` event (saved/error). */
+export async function resumeAutoApply(runId: string): Promise<void> {
+  await api.post(`/auto-apply/resume/${runId}`)
+}
+
+export function createSessionSSE(site: string): EventSource {
+  const token = localStorage.getItem('token') ?? ''
+  return new EventSource(`/api/auto-apply/create-session/${encodeURIComponent(site)}?token=${encodeURIComponent(token)}`)
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {

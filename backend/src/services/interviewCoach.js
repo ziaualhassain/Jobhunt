@@ -1,5 +1,6 @@
 const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
+const { shouldUseApi } = require('./llmProvider');
 
 function buildSystemPrompt(role, company, mode) {
   const ctx = [role && `Target Role: ${role}`, company && `Company: ${company}`]
@@ -66,14 +67,14 @@ async function isOllamaAvailable() {
 }
 
 async function chat(messages, role, company, mode) {
+  if (shouldUseApi()) {
+    console.log('[Interview] Using Claude API');
+    return chatWithClaude(messages, role, company, mode);
+  }
   if (await isOllamaAvailable()) {
     const model = process.env.OLLAMA_MODEL || 'llama3.2';
     console.log(`[Interview] Using Ollama (${model})`);
     return chatWithOllama(messages, role, company, mode);
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    console.log('[Interview] Using Claude API');
-    return chatWithClaude(messages, role, company, mode);
   }
   throw new Error('NO_BACKEND');
 }

@@ -11,6 +11,8 @@ const authRouter = require('./routes/auth');
 const profileRouter = require('./routes/profile');
 const interviewRouter = require('./routes/interview');
 const prepRouter = require('./routes/prep');
+const applicationProfileRouter = require('./routes/applicationProfile');
+const autoApplyRouter = require('./routes/autoApply');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +27,8 @@ app.use('/api/applications', applicationsRouter);
 app.use('/api/resume', resumeRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/prep', prepRouter);
+app.use('/api/application-profile', applicationProfileRouter);
+app.use('/api/auto-apply', autoApplyRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

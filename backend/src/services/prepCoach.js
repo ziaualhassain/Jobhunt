@@ -2,6 +2,7 @@ const axios = require('axios');
 const Anthropic = require('@anthropic-ai/sdk');
 const xlsx = require('xlsx');
 const mammoth = require('mammoth');
+const { shouldUseApi } = require('./llmProvider');
 
 // ─── AI plan generation ──────────────────────────────────────────────────────
 
@@ -105,13 +106,13 @@ async function generateWithClaude(role, company, timelineWeeks, focusAreas) {
 }
 
 async function generatePlan(role, company, timelineWeeks, focusAreas) {
+  if (shouldUseApi()) {
+    console.log('[Prep] Using Claude');
+    return generateWithClaude(role, company, timelineWeeks, focusAreas);
+  }
   if (await isOllamaAvailable()) {
     console.log('[Prep] Using Ollama');
     return generateWithOllama(role, company, timelineWeeks, focusAreas);
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    console.log('[Prep] Using Claude');
-    return generateWithClaude(role, company, timelineWeeks, focusAreas);
   }
   throw new Error('NO_BACKEND');
 }
@@ -283,7 +284,7 @@ async function structureFromMessage(content, role, company) {
     console.log('[Prep] Structuring chat message via Ollama');
     return structureFromMessageOllama(content, role, company);
   }
-  if (process.env.ANTHROPIC_API_KEY) {
+  if (shouldUseApi()) {
     console.log('[Prep] Structuring chat message via Claude');
     return structureFromMessageClaude(content, role, company);
   }
@@ -307,6 +308,15 @@ async function chatAboutTask(messages, task) {
     `- If the user seems stuck, break the concept into smaller steps`,
   ].filter(Boolean).join('\n');
 
+  if (shouldUseApi()) {
+    const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const res = await client.messages.create({
+      model: 'claude-opus-4-7', max_tokens: 1024,
+      system: systemPrompt,
+      messages,
+    });
+    return res.content.find(b => b.type === 'text')?.text || '';
+  }
   if (await isOllamaAvailable()) {
     const model = process.env.OLLAMA_MODEL || 'llama3.2';
     const baseUrl = process.env.OLLAMA_URL || 'http://localhost:11434';
@@ -318,15 +328,6 @@ async function chatAboutTask(messages, task) {
     const reply = res.data?.message?.content;
     if (!reply) throw new Error('Empty response from Ollama');
     return reply;
-  }
-  if (process.env.ANTHROPIC_API_KEY) {
-    const client = new Anthropic.default({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const res = await client.messages.create({
-      model: 'claude-opus-4-7', max_tokens: 1024,
-      system: systemPrompt,
-      messages,
-    });
-    return res.content.find(b => b.type === 'text')?.text || '';
   }
   throw new Error('NO_BACKEND');
 }
