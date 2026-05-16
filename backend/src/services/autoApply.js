@@ -87,12 +87,17 @@ async function createSession({ userId, site, loginUrl, onLog, timeoutMs = 5 * 60
   }
 }
 
-// Log which LLM will be used at startup
+// true  → visible browser window (current behaviour, needed for CAPTCHA handling)
+// false → headless background task (default — no window opens)
+const showBrowser = () => process.env.SHOW_BROWSER === 'true';
+
+// Log which LLM and browser mode will be used at startup
 if (shouldUseApi('auto-apply')) {
   console.log('[AutoApply] LLM: Anthropic claude-opus-4-7');
 } else {
   console.log(`[AutoApply] LLM: Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE} (set ANTHROPIC_API_KEY to use Claude)`);
 }
+console.log(`[AutoApply] Browser mode: ${showBrowser() ? 'visible (SHOW_BROWSER=true)' : 'headless background task'}`);
 
 // Map of running apply jobs: runId → { status, logs, result }
 const applyJobs = new Map();
@@ -152,9 +157,9 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSo
       : `Ollama ${OLLAMA_MODEL} @ ${OLLAMA_BASE}`;
     addLog(runId, `LLM provider: ${provider}`);
 
-    addLog(runId, 'Launching browser...');
+    addLog(runId, `Launching browser (${showBrowser() ? 'visible' : 'headless'})...`);
     browser = await chromium.launch({
-      headless: !shouldUseApi('auto-apply'),
+      headless: !showBrowser(),
       args: ['--disable-blink-features=AutomationControlled'],
     });
 
@@ -193,7 +198,9 @@ RULES:
 5. For <select> dropdowns, use fill_input with the visible label text (e.g. "No", "Yes", "Full-time").
    fill_input auto-detects select elements and calls selectOption internally.
 6. When the application is submitted, call the done tool with success=true.
-7. If you encounter a CAPTCHA, 2FA prompt, or anything a human must solve, call wait_for_human — DO NOT call done. The human will act in the browser and then signal you to continue.
+7. ${showBrowser()
+      ? 'If you encounter a CAPTCHA, 2FA prompt, or anything a human must solve, call wait_for_human — DO NOT call done. The human will act in the browser and then signal you to continue.'
+      : 'If you encounter a CAPTCHA or 2FA prompt that cannot be bypassed, call done with success=false and explain why.'}
 8. If you hit a truly permanent blocker (page error, job already closed), call done with success=false.
 You MUST call done at the end — no exceptions.
 
@@ -349,7 +356,7 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
           required: ['success', 'message'],
         },
       },
-      {
+      ...(showBrowser() ? [{
         name: 'wait_for_human',
         description: 'Pause and ask the human to take action in the browser (solve a CAPTCHA, approve 2FA, etc.). The browser stays open. Use this instead of done(success=false) whenever a human can unblock the situation.',
         input_schema: {
@@ -359,7 +366,7 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
           },
           required: ['reason'],
         },
-      },
+      }] : []),
     ];
 
     // ─── Agent message loop ──────────────────────────────────────────────────
@@ -661,25 +668,41 @@ IMPORTANT: You must call a tool now. Start by calling get_interactive_elements t
 
           } else if (toolName === 'wait_for_human') {
             const reason = input.reason || 'Human action required';
-            addLog(runId, `⏸️ Paused — ${reason}`);
-            const entry = applyJobs.get(runId);
-            if (entry) {
-              entry.status = 'paused';
-              entry.pauseReason = reason;
-            }
-            // Suspend until the /resume endpoint resolves this Promise
-            await new Promise(resolve => {
+            if (!showBrowser()) {
+              // Headless mode — no browser window, cannot pause for human input
+              done = true;
+              const entry = applyJobs.get(runId);
+              if (entry) {
+                entry.status = 'error';
+                entry.result = { success: false, message: `Requires human interaction (${reason}). Enable SHOW_BROWSER=true to handle this manually.` };
+              }
+              addLog(runId, `⚠️ Headless mode — cannot pause for human: ${reason}`);
+              toolResult = {
+                type: 'tool_result',
+                tool_use_id: toolUseId,
+                content: `Cannot wait for human in headless mode. Stopping: ${reason}`,
+              };
+            } else {
+              addLog(runId, `⏸️ Paused — ${reason}`);
+              const entry = applyJobs.get(runId);
+              if (entry) {
+                entry.status = 'paused';
+                entry.pauseReason = reason;
+              }
+              // Suspend until the /resume endpoint resolves this Promise
+              await new Promise(resolve => {
+                const e = applyJobs.get(runId);
+                if (e) e.resumeResolve = resolve;
+              });
               const e = applyJobs.get(runId);
-              if (e) e.resumeResolve = resolve;
-            });
-            const e = applyJobs.get(runId);
-            if (e) { e.status = 'running'; e.resumeResolve = null; e.pauseReason = null; }
-            addLog(runId, '▶️ Resuming — take a screenshot to see the current state');
-            toolResult = {
-              type: 'tool_result',
-              tool_use_id: toolUseId,
-              content: 'Human has completed the action. Call take_screenshot to see the current state and continue.',
-            };
+              if (e) { e.status = 'running'; e.resumeResolve = null; e.pauseReason = null; }
+              addLog(runId, '▶️ Resuming — take a screenshot to see the current state');
+              toolResult = {
+                type: 'tool_result',
+                tool_use_id: toolUseId,
+                content: 'Human has completed the action. Call take_screenshot to see the current state and continue.',
+              };
+            }
 
           } else {
             toolResult = {
