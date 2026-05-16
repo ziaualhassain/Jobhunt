@@ -48,7 +48,11 @@ async function createSession({ userId, site, loginUrl, onLog, timeoutMs = 5 * 60
 
   const browser = await chromium.launch({
     headless: false,
-    args: ['--disable-blink-features=AutomationControlled'],
+    args: [
+    '--disable-blink-features=AutomationControlled',
+    '--no-sandbox',              // required inside Docker (no user-namespace isolation)
+    '--disable-dev-shm-usage',   // Docker /dev/shm is only 64 MB by default
+  ],
   });
 
   try {
@@ -160,7 +164,11 @@ async function _runAgentLoop({ runId, jobUrl, jobTitle, jobCompany, jobId, jobSo
     addLog(runId, `Launching browser (${showBrowser() ? 'visible' : 'headless'})...`);
     browser = await chromium.launch({
       headless: !showBrowser(),
-      args: ['--disable-blink-features=AutomationControlled'],
+      args: [
+    '--disable-blink-features=AutomationControlled',
+    '--no-sandbox',              // required inside Docker (no user-namespace isolation)
+    '--disable-dev-shm-usage',   // Docker /dev/shm is only 64 MB by default
+  ],
     });
 
     // Load saved session (cookies + localStorage) if available — skips login + 2FA
