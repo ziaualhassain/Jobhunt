@@ -5,7 +5,9 @@
   "type": "commonjs",
   "scripts": {
     "dev": "nodemon --watch src src/index.js",
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "flush-careers": "node src/scripts/flushCareers.js",
+    "flush-careers:sync": "node src/scripts/flushCareers.js --sync"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.93.0",
