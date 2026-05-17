@@ -1,10 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const { shouldUseApi } = require('../services/llmProvider');
 const { aggregateJobs } = require('../services/jobSources');
 const { pool } = require('../db/database');
+
+// Decodes the JWT if present but never blocks the request (for public endpoints)
+function optionalAuth(req, _res, next) {
+  try {
+    const auth = req.headers.authorization;
+    const raw = auth?.startsWith('Bearer ') ? auth.slice(7) : (req.query.token ?? null);
+    if (raw) req.user = jwt.verify(raw, process.env.JWT_SECRET);
+  } catch { /* ignore invalid tokens */ }
+  next();
+}
 
 const STOP_WORDS = new Set([
   'solutions', 'technologies', 'technology', 'methodologies', 'methodology',
@@ -79,8 +90,64 @@ async function getTheirStackJobs(filters) {
   }
 }
 
+// Career page jobs — jobs from a user's watched company career pages
+async function getCareerPageJobs(userId, filters) {
+  const { keywords = [], tags = [], region = '' } = filters;
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+
+  const conditions = ['wc.user_id = $1', 'wc.is_active = true'];
+  const params = [userId];
+
+  if (region) {
+    params.push(region);
+    conditions.push(`cpj.region = $${params.length}`);
+  }
+
+  if (allSignals.length > 0) {
+    const signalClauses = allSignals.flatMap(signal => {
+      const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+      return words.map(w => {
+        params.push(`%${w}%`);
+        const i = params.length;
+        return `(LOWER(cpj.title) LIKE $${i} OR LOWER(cpj.tags) LIKE $${i} OR LOWER(cpj.description) LIKE $${i})`;
+      });
+    });
+    if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
+  }
+
+  const sql = `
+    SELECT cpj.*
+    FROM career_page_jobs cpj
+    JOIN watched_companies wc ON wc.career_url = cpj.career_url
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY cpj.scraped_at DESC
+    LIMIT 200
+  `;
+
+  try {
+    const { rows } = await pool.query(sql, params);
+    return rows.map(r => ({
+      job_id:      r.job_id,
+      title:       r.title,
+      company:     r.company_name,
+      location:    r.location || 'Not specified',
+      region:      r.region || '',
+      url:         r.url,
+      description: r.description || '',
+      salary:      '',
+      job_type:    r.job_type || 'Full-time',
+      source:      'Company Watch',
+      tags:        r.tags || '',
+      logo:        '',
+    }));
+  } catch (err) {
+    console.error('[CareerPageJobs] query failed:', err.message);
+    return [];
+  }
+}
+
 // GET /api/jobs/search
-router.get('/search', async (req, res) => {
+router.get('/search', optionalAuth, async (req, res) => {
   try {
     const {
       keywords = '',
@@ -102,19 +169,16 @@ router.get('/search', async (req, res) => {
       region,
     };
 
-    // Live sources (RemoteOK, WWR, Himalayas, ArbeitNow) carry Remote jobs.
-    // Remote jobs are relevant to users in any country, so always include them.
-    // Only skip live sources when the user explicitly wants Remote-only AND has
-    // no other filters — not a scenario that helps here.
-    const [liveJobs, theirStackJobs] = await Promise.all([
+    const [liveJobs, theirStackJobs, careerJobs] = await Promise.all([
       aggregateJobs(filters),
       getTheirStackJobs(filters),
+      req.user ? getCareerPageJobs(req.user.id, filters) : Promise.resolve([]),
     ]);
 
     // Merge and deduplicate by job_id
     const seen = new Set();
     const jobs = [];
-    for (const job of [...liveJobs, ...theirStackJobs]) {
+    for (const job of [...liveJobs, ...theirStackJobs, ...careerJobs]) {
       if (!seen.has(job.job_id)) {
         seen.add(job.job_id);
         jobs.push(job);

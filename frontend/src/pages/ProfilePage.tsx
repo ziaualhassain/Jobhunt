@@ -4,6 +4,7 @@ import {
   Save, Loader2, CheckCircle2, AlertCircle, X, PenLine, LogOut,
   ShieldCheck, Sliders, FileText, Upload, Star, Trash2, Lock, Plus,
   Phone, Link2, Briefcase, DollarSign, Clock, Globe, MonitorSmartphone, ChevronDown,
+  Building2, RefreshCw, ExternalLink,
 } from 'lucide-react'
 import {
   getProfile, updateProfile,
@@ -12,8 +13,9 @@ import {
   listResumes, uploadResume, setResumeAsPrimary, deleteResume,
   listCredentials, upsertCredential, deleteCredential,
   createSessionSSE, checkSessionStatus,
+  listWatchedCompanies, addWatchedCompany, removeWatchedCompany, scrapeWatchedCompany,
 } from '../lib/api'
-import type { ApplicationProfile, UserResume, JobCredential, Questionnaire } from '../lib/api'
+import type { ApplicationProfile, UserResume, JobCredential, Questionnaire, WatchedCompany } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
 const INTEREST_GROUPS = [
@@ -416,6 +418,148 @@ function QuestionnaireSection() {
         {saving ? <Loader2 size={11} className="animate-spin" /> : saved ? <CheckCircle2 size={11} /> : <Save size={11} />}
         {saving ? 'Saving…' : saved ? 'Saved!' : 'Save Questionnaire'}
       </button>
+    </div>
+  )
+}
+
+// ── Company Watchlist section ─────────────────────────────────────────────────
+
+function CompanyWatchlistSection() {
+  const qc = useQueryClient()
+  const [name, setName] = useState('')
+  const [url, setUrl]   = useState('')
+  const [addErr, setAddErr] = useState('')
+  const [scrapingId, setScrapingId] = useState<number | null>(null)
+
+  const { data: companies = [], isLoading } = useQuery<WatchedCompany[]>({
+    queryKey: ['watchedCompanies'],
+    queryFn: listWatchedCompanies,
+  })
+
+  const addMutation = useMutation({
+    mutationFn: addWatchedCompany,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['watchedCompanies'] })
+      setName(''); setUrl(''); setAddErr('')
+    },
+    onError: (e: any) => setAddErr(e.response?.data?.error || e.message),
+  })
+
+  const removeMutation = useMutation({
+    mutationFn: removeWatchedCompany,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['watchedCompanies'] }),
+  })
+
+  async function handleScrape(id: number) {
+    setScrapingId(id)
+    try {
+      await scrapeWatchedCompany(id)
+      qc.invalidateQueries({ queryKey: ['watchedCompanies'] })
+    } finally {
+      setScrapingId(null)
+    }
+  }
+
+  function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim() || !url.trim()) return
+    addMutation.mutate({ company_name: name.trim(), career_url: url.trim() })
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Add form */}
+      <form onSubmit={handleAdd} className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <input
+            className="input-field flex-1 text-sm"
+            placeholder="Company name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+          />
+          <input
+            className="input-field flex-[2] text-sm"
+            placeholder="Career page URL (e.g. jobs.lever.co/stripe)"
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            type="url"
+          />
+          <button
+            type="submit"
+            disabled={addMutation.isPending || !name || !url}
+            className="btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 shrink-0"
+          >
+            {addMutation.isPending ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+            Add
+          </button>
+        </div>
+        {addErr && <p className="text-xs text-red-400">{addErr}</p>}
+        <p className="text-xs text-slate-600">
+          Supports Greenhouse, Lever, Ashby, BambooHR, SmartRecruiters, and any public career page.
+          Jobs are scraped automatically every 6 hours and appear in your search results.
+        </p>
+      </form>
+
+      {/* Company list */}
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-slate-500 text-xs py-2">
+          <Loader2 size={13} className="animate-spin" /> Loading…
+        </div>
+      ) : companies.length === 0 ? (
+        <p className="text-xs text-slate-600 py-2">No companies added yet. Add a career page URL above to get started.</p>
+      ) : (
+        <div className="space-y-2">
+          {companies.map(c => (
+            <div key={c.id} className="flex items-start gap-3 bg-slate-800/50 rounded-lg px-3 py-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-200 truncate">{c.company_name}</span>
+                  <a
+                    href={c.career_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-slate-500 hover:text-brand-400 shrink-0"
+                  >
+                    <ExternalLink size={12} />
+                  </a>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                  <span className="text-xs text-slate-500 truncate max-w-[220px]">{c.career_url}</span>
+                  {c.last_scraped_at ? (
+                    <span className="text-xs text-slate-600">
+                      {Number(c.total_jobs)} jobs · last scraped {new Date(c.last_scraped_at).toLocaleDateString()}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-600">Not yet scraped</span>
+                  )}
+                  {c.scrape_error && (
+                    <span className="text-xs text-amber-500 truncate max-w-[200px]" title={c.scrape_error}>
+                      ⚠ {c.scrape_error.slice(0, 60)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => handleScrape(c.id)}
+                  disabled={scrapingId === c.id}
+                  title="Scrape now"
+                  className="p-1.5 rounded text-slate-500 hover:text-brand-400 hover:bg-slate-700 transition-colors"
+                >
+                  <RefreshCw size={13} className={scrapingId === c.id ? 'animate-spin' : ''} />
+                </button>
+                <button
+                  onClick={() => removeMutation.mutate(c.id)}
+                  title="Remove"
+                  className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-slate-700 transition-colors"
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -916,6 +1060,18 @@ export default function ProfilePage() {
           </div>
         </div>
         <CredentialsSection />
+      </div>
+
+      {/* ── Company Watchlist ────────────────────────────────────────────── */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <Building2 size={14} strokeWidth={1.75} className="text-brand-400" />
+          <div>
+            <h2 className="font-semibold text-slate-200 text-sm">Company Watchlist</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Track career pages — jobs appear automatically in your search results</p>
+          </div>
+        </div>
+        <CompanyWatchlistSection />
       </div>
 
       {/* ── Job preferences ─────────────────────────────────────────────── */}

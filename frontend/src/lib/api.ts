@@ -558,3 +558,36 @@ export async function addPlanFromMessage(data: {
   const res = await api.post('/prep/plans/from-message', data)
   return res.data
 }
+
+// ── Career Page Watchlist ─────────────────────────────────────────────────────
+
+export interface WatchedCompany {
+  id: number
+  company_name: string
+  career_url: string
+  is_active: boolean
+  last_scraped_at: string | null
+  job_count: number
+  total_jobs: number
+  scrape_error: string | null
+  created_at: string
+}
+
+export async function listWatchedCompanies(): Promise<WatchedCompany[]> {
+  const res = await api.get('/career-pages')
+  return res.data
+}
+
+export async function addWatchedCompany(data: { company_name: string; career_url: string }): Promise<WatchedCompany> {
+  const res = await api.post('/career-pages', data)
+  return res.data
+}
+
+export async function removeWatchedCompany(id: number): Promise<void> {
+  await api.delete(`/career-pages/${id}`)
+}
+
+export async function scrapeWatchedCompany(id: number): Promise<{ scraped: number; error: string | null }> {
+  const res = await api.post(`/career-pages/${id}/scrape`)
+  return res.data
+}
