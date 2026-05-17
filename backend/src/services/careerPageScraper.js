@@ -57,14 +57,8 @@ async function scrapeGreenhouse(careerUrl, companyName) {
   }));
 }
 
-async function scrapeLever(careerUrl, companyName) {
-  const slug = careerUrl.match(/lever\.co\/([^\/\?#]+)/)?.[1];
-  if (!slug) return [];
-  const { data } = await axios.get(
-    `https://api.lever.co/v0/postings/${slug}?mode=json`,
-    { timeout: 12000 },
-  );
-  return (Array.isArray(data) ? data : []).map(job => ({
+function mapLeverJob(job, companyName) {
+  return {
     job_id:      `lever-${job.id}`,
     title:       job.text,
     company:     companyName,
@@ -74,7 +68,34 @@ async function scrapeLever(careerUrl, companyName) {
     description: (job.descriptionPlain || '').slice(0, 500),
     job_type:    job.workplaceType || 'Full-time',
     tags:        [job.categories?.team, job.categories?.department].filter(Boolean).join(', '),
-  }));
+  };
+}
+
+async function scrapeLever(careerUrl, companyName) {
+  const slug = careerUrl.match(/lever\.co\/([^\/\?#]+)/)?.[1];
+  if (!slug) return [];
+
+  // Try the v0 JSON API first (works for companies that haven't disabled it)
+  try {
+    const { data } = await axios.get(
+      `https://api.lever.co/v0/postings/${slug}?mode=json`,
+      { timeout: 12000 },
+    );
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map(job => mapLeverJob(job, companyName));
+    }
+  } catch { /* fall through to HTML scrape */ }
+
+  // Fallback: scrape the board page and extract __NEXT_DATA__
+  const { data: html } = await axios.get(careerUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; JobHunt/1.0)' },
+    timeout: 15000,
+  });
+  const match = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!match) return [];
+  const nextData = JSON.parse(match[1]);
+  const postings = nextData?.props?.pageProps?.postings ?? nextData?.props?.pageProps?.data?.postings ?? [];
+  return postings.map(job => mapLeverJob(job, companyName));
 }
 
 async function scrapeBambooHR(careerUrl, companyName) {
@@ -256,18 +277,20 @@ async function scrapeCareerPage(companyName, careerUrl) {
 // scraping works without AI or Playwright.
 
 const DEFAULT_COMPANIES = [
-  { name: 'Stripe',      url: 'https://jobs.lever.co/stripe' },
-  { name: 'Vercel',      url: 'https://jobs.lever.co/vercel' },
-  { name: 'Airtable',    url: 'https://jobs.lever.co/airtable' },
+  // Greenhouse — confirmed working board slugs
   { name: 'Airbnb',      url: 'https://boards.greenhouse.io/airbnb' },
   { name: 'Figma',       url: 'https://boards.greenhouse.io/figma' },
-  { name: 'Notion',      url: 'https://boards.greenhouse.io/notion' },
-  { name: 'Coinbase',    url: 'https://boards.greenhouse.io/coinbase' },
   { name: 'Discord',     url: 'https://boards.greenhouse.io/discord' },
-  { name: 'Canva',       url: 'https://boards.greenhouse.io/canva' },
+  { name: 'Stripe',      url: 'https://boards.greenhouse.io/stripe' },
+  { name: 'Airtable',    url: 'https://boards.greenhouse.io/airtable' },
+  { name: 'Vercel',      url: 'https://boards.greenhouse.io/vercel' },
+  { name: 'Brex',        url: 'https://boards.greenhouse.io/brex' },
+  { name: 'Plaid',       url: 'https://boards.greenhouse.io/plaid' },
+  // Ashby — structured GraphQL API
   { name: 'Linear',      url: 'https://jobs.ashbyhq.com/linear' },
-  { name: 'Zepto',       url: 'https://jobs.lever.co/zepto' },
-  { name: 'Swiggy',      url: 'https://boards.greenhouse.io/swiggy' },
+  { name: 'Notion',      url: 'https://jobs.ashbyhq.com/notion' },
+  { name: 'Retool',      url: 'https://jobs.ashbyhq.com/retool' },
+  { name: 'Loom',        url: 'https://jobs.ashbyhq.com/loom' },
 ];
 
 // ─── DB sync ─────────────────────────────────────────────────────────────────
