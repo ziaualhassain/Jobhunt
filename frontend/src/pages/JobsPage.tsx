@@ -132,8 +132,9 @@ export default function JobsPage() {
 
   // ── Curated: built from profile preferences ─────────────────────────────────
   const profileInterests = profile?.preferences?.interests ?? []
-  const profileKeywords = profile?.preferences?.keywords ?? []
-  const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
+  const profileKeywords  = profile?.preferences?.keywords ?? []
+  const profileJobTitles = profile?.preferences?.jobTitles ?? []
+  const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0 || profileJobTitles.length > 0
 
   // Map years of experience → seniority label when user hasn't picked one explicitly
   function deriveExperienceLevel(years: number): string {
@@ -194,7 +195,8 @@ export default function JobsPage() {
 
   const curatedFilters: Partial<SearchFilters> = {
     tags:            profileInterests,
-    keywords:        profileKeywords,
+    // job titles added as keywords so the backend fetches roles matching those titles
+    keywords:        [...profileKeywords, ...profileJobTitles],
     experienceLevel: effectiveExperienceLevel,
     jobType:         profile?.preferences?.jobType ?? '',
     location:        profileCity,   // city-level filter (e.g. "Hyderabad")
@@ -210,8 +212,11 @@ export default function JobsPage() {
     skills: [...profileInterests, ...profileKeywords],
     experienceLevel: effectiveExperienceLevel || 'Mid-level',
     yearsOfExperience: profileYears ?? 0,
-    jobTitles: profileInterests.filter(i => ROLE_TAGS.has(i)),
-    searchKeywords: profileKeywords,
+    // Prefer explicit job titles the user set; fall back to role-type interest tags
+    jobTitles: profileJobTitles.length > 0
+      ? profileJobTitles
+      : profileInterests.filter(i => ROLE_TAGS.has(i)),
+    searchKeywords: [...profileKeywords, ...profileJobTitles],
     cloudPlatforms: profileInterests.filter(i => CLOUD_TAGS.has(i)),
     summary: '',
   } : null

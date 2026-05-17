@@ -843,6 +843,8 @@ export default function ProfilePage() {
 
   const [interests, setInterests] = useState<string[]>([])
   const [keywords, setKeywords] = useState('')
+  const [jobTitles, setJobTitles] = useState<string[]>([])
+  const [jobTitleInput, setJobTitleInput] = useState('')
   const [experienceLevel, setExperienceLevel] = useState('')
   const [yearsOfExperience, setYearsOfExperience] = useState<string>('')
   const [jobType, setJobType] = useState('')
@@ -859,6 +861,7 @@ export default function ProfilePage() {
     setEditBio(profile.preferences?.bio ?? '')
     setInterests(profile.preferences?.interests ?? [])
     setKeywords((profile.preferences?.keywords ?? []).join(', '))
+    setJobTitles(profile.preferences?.jobTitles ?? [])
     setExperienceLevel(profile.preferences?.experienceLevel ?? '')
     setYearsOfExperience(profile.preferences?.yearsOfExperience != null ? String(profile.preferences.yearsOfExperience) : '')
     setJobType(profile.preferences?.jobType ?? '')
@@ -892,6 +895,7 @@ export default function ProfilePage() {
       preferences: {
         interests,
         keywords: keywords.split(',').map(k => k.trim()).filter(Boolean),
+        jobTitles,
         experienceLevel,
         yearsOfExperience: yearsOfExperience ? Number(yearsOfExperience) : undefined,
         jobType,
@@ -1120,6 +1124,57 @@ export default function ProfilePage() {
               value={keywords}
               onChange={e => setKeywords(e.target.value)}
             />
+          </div>
+
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5">
+              Target job titles <span className="text-slate-600">— used to match and rank suggestions</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                className="input flex-1"
+                placeholder="e.g. Backend Engineer, Java Developer"
+                value={jobTitleInput}
+                onChange={e => setJobTitleInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const t = jobTitleInput.trim()
+                    if (t && !jobTitles.includes(t)) setJobTitles(prev => [...prev, t])
+                    setJobTitleInput('')
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const t = jobTitleInput.trim()
+                  if (t && !jobTitles.includes(t)) setJobTitles(prev => [...prev, t])
+                  setJobTitleInput('')
+                }}
+                disabled={!jobTitleInput.trim()}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-700 text-xs text-slate-400 hover:text-slate-200 hover:border-slate-500 transition-colors disabled:opacity-40"
+              >
+                <Plus size={12} />Add
+              </button>
+            </div>
+            {jobTitles.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {jobTitles.map(t => (
+                  <span key={t} className="flex items-center gap-1 badge bg-brand-500/15 text-brand-300 border border-brand-500/30 text-xs">
+                    {t}
+                    <button
+                      type="button"
+                      onClick={() => setJobTitles(prev => prev.filter(x => x !== t))}
+                      className="opacity-60 hover:opacity-100 ml-0.5"
+                    >
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="text-[10px] text-slate-600 mt-1.5">Press Enter or click Add · these titles power the Role match score in For You</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -38,6 +38,7 @@ export interface UserPreferences {
   bio?: string
   interests: string[]
   keywords: string[]
+  jobTitles?: string[]
   experienceLevel: string
   yearsOfExperience?: number
   remote: boolean
