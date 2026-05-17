@@ -11,6 +11,7 @@ export interface Job {
   source: string;
   tags: string;
   logo?: string;
+  date_posted?: string;
 }
 
 export type ApplicationStatus =

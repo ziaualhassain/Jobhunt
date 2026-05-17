@@ -45,6 +45,57 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/applications/signals — behavioral signals from saved/applied jobs
+// Must be before /:id to avoid route conflict
+router.get('/signals', async (req, res) => {
+  try {
+    const ENGAGED_STATUSES = ['applied', 'phone_screen', 'technical', 'final_interview', 'offer'];
+
+    const { rows } = await pool.query(
+      `SELECT title, tags, status FROM applications
+       WHERE user_id = $1 AND status != 'rejected'
+       ORDER BY updated_at DESC LIMIT 60`,
+      [req.user.id],
+    );
+
+    if (rows.length === 0) return res.json({ titles: [], skills: [], count: 0 });
+
+    const titleFreq  = {};
+    const skillFreq  = {};
+
+    for (const row of rows) {
+      const weight = ENGAGED_STATUSES.includes(row.status) ? 2 : 1;
+
+      // Full job title as a signal (for role matching)
+      const title = (row.title || '').trim();
+      if (title) titleFreq[title] = (titleFreq[title] || 0) + weight;
+
+      // Skills/tags
+      for (const raw of (row.tags || '').split(',')) {
+        const skill = raw.trim();
+        if (skill.length > 1) {
+          const key = skill.toLowerCase();
+          skillFreq[key] = (skillFreq[key] || 0) + weight;
+        }
+      }
+    }
+
+    const titles = Object.entries(titleFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([t]) => t);
+
+    const skills = Object.entries(skillFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 25)
+      .map(([s]) => s);
+
+    res.json({ titles, skills, count: rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/applications/:id
 router.get('/:id', async (req, res) => {
   try {

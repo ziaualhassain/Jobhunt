@@ -6,13 +6,14 @@ import SearchForm, { REGIONS } from '../components/SearchForm'
 import { PERCENTAGE_ENABLE } from '../lib/config'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
-import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
-import type { ResumeAnalysis } from '../lib/api'
+import { searchJobs, saveApplication, getApplications, getProfile, updateProfile, getBehavioralSignals } from '../lib/api'
+import type { ResumeAnalysis, BehavioralSignals } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
-import { scoreJob } from '../lib/jobScorer'
+import { scoreJob, parseRequiredYears } from '../lib/jobScorer'
 import type { FitScore } from '../lib/jobScorer'
 
 type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
+type CuratedSortKey = 'match' | 'latest' | 'title' | 'company'
 type Tab = 'curated' | 'browse'
 
 // ISO 3166-1 alpha-2 → our region tags
@@ -28,13 +29,14 @@ const COUNTRY_TO_REGION: Record<string, string> = {
 }
 
 function JobGrid({
-  jobs, savedIds, onSave, scores, resumeAnalysis,
+  jobs, savedIds, onSave, scores, resumeAnalysis, profileRegion,
 }: {
   jobs: Job[]
   savedIds: Set<string>
   onSave: (j: Job) => void
   scores?: Map<string, FitScore>
   resumeAnalysis?: ResumeAnalysis | null
+  profileRegion?: string
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -46,6 +48,7 @@ function JobGrid({
           onSave={onSave}
           fitScore={scores?.get(job.job_id)}
           resumeAnalysis={resumeAnalysis}
+          profileRegion={profileRegion}
         />
       ))}
     </div>
@@ -77,6 +80,7 @@ export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('curated')
   const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
   const [sort, setSort] = useState<SortKey>(PERCENTAGE_ENABLE ? 'match' : 'default')
+  const [curatedSort, setCuratedSort] = useState<CuratedSortKey>('match')
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
@@ -91,6 +95,11 @@ export default function JobsPage() {
 
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
   const { data: applications } = useQuery({ queryKey: ['applications'], queryFn: () => getApplications() })
+  const { data: behavioralSignals } = useQuery<BehavioralSignals>({
+    queryKey: ['behavioral-signals'],
+    queryFn: getBehavioralSignals,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
@@ -128,8 +137,12 @@ export default function JobsPage() {
 
   // ── Curated: built from profile preferences ─────────────────────────────────
   const profileInterests = profile?.preferences?.interests ?? []
-  const profileKeywords = profile?.preferences?.keywords ?? []
-  const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
+  const profileKeywords  = profile?.preferences?.keywords ?? []
+  const profileJobTitles = profile?.preferences?.jobTitles ?? []
+  const behavioralTitles = behavioralSignals?.titles ?? []
+  const behavioralSkills = behavioralSignals?.skills ?? []
+  const hasBehavioralData = (behavioralSignals?.count ?? 0) >= 2
+  const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0 || profileJobTitles.length > 0
 
   // Map years of experience → seniority label when user hasn't picked one explicitly
   function deriveExperienceLevel(years: number): string {
@@ -188,13 +201,22 @@ export default function JobsPage() {
   const profileCity   = profile ? extractCity(rawProfileLocation) : ''
   const profileRemote = profile?.preferences?.remote ?? true
 
+  // Deduplicate while preserving order — profile signals take priority
+  function mergeUnique(...arrays: string[][]): string[] {
+    return [...new Set(arrays.flat())]
+  }
+
+  const allJobTitles    = mergeUnique(profileJobTitles, hasBehavioralData ? behavioralTitles : [])
+  const allKeywords     = mergeUnique(profileKeywords, hasBehavioralData ? behavioralSkills : [])
+
   const curatedFilters: Partial<SearchFilters> = {
     tags:            profileInterests,
-    keywords:        profileKeywords,
+    // job titles + behavioral titles added as keywords for backend fetch
+    keywords:        mergeUnique(profileKeywords, profileJobTitles, hasBehavioralData ? behavioralSkills : []),
     experienceLevel: effectiveExperienceLevel,
     jobType:         profile?.preferences?.jobType ?? '',
-    location:        profileCity,   // city-level filter (e.g. "Hyderabad")
-    region:          profileRegion, // country-level filter (e.g. "India")
+    location:        profileCity,
+    region:          profileRegion,
     remote:          profileRemote,
   }
 
@@ -203,11 +225,13 @@ export default function JobsPage() {
   const ROLE_TAGS = new Set(['Frontend', 'Backend', 'Full Stack', 'DevOps', 'Mobile', 'Data Engineer', 'ML / AI', 'QA', 'Platform Engineer', 'SRE'])
   const CLOUD_TAGS = new Set(['AWS', 'Azure', 'GCP'])
   const profileAsAnalysis: ResumeAnalysis | null = profile && hasProfileData ? {
-    skills: [...profileInterests, ...profileKeywords],
+    skills: mergeUnique(profileInterests, allKeywords),
     experienceLevel: effectiveExperienceLevel || 'Mid-level',
     yearsOfExperience: profileYears ?? 0,
-    jobTitles: profileInterests.filter(i => ROLE_TAGS.has(i)),
-    searchKeywords: profileKeywords,
+    jobTitles: allJobTitles.length > 0
+      ? allJobTitles
+      : profileInterests.filter(i => ROLE_TAGS.has(i)),
+    searchKeywords: mergeUnique(allKeywords, allJobTitles),
     cloudPlatforms: profileInterests.filter(i => CLOUD_TAGS.has(i)),
     summary: '',
   } : null
@@ -273,11 +297,29 @@ export default function JobsPage() {
   // ── Fit scores ───────────────────────────────────────────────────────────────
   // Resume upload takes priority; fall back to profile-derived analysis so For
   // You cards show badges without requiring a resume.
-  const effectiveAnalysis = resumeAnalysis ?? profileAsAnalysis
+  // Profile preferences (experience level, years) always override resume-detected
+  // values so the AI doesn't call the user "junior" after they set Mid-level 3y.
+  const effectiveAnalysis: typeof profileAsAnalysis = (() => {
+    const base = resumeAnalysis ?? profileAsAnalysis
+    if (!base) return null
+    const withLevel = (!effectiveExperienceLevel && profileYears == null) ? base : {
+      ...base,
+      experienceLevel: effectiveExperienceLevel || base.experienceLevel,
+      yearsOfExperience: profileYears ?? base.yearsOfExperience,
+    }
+    // Layer behavioral signals on top — augment skills/titles without replacing
+    if (!hasBehavioralData) return withLevel
+    return {
+      ...withLevel,
+      skills:         mergeUnique(withLevel.skills, behavioralSkills),
+      searchKeywords: mergeUnique(withLevel.searchKeywords, behavioralSkills),
+      jobTitles:      mergeUnique(withLevel.jobTitles, behavioralTitles),
+    }
+  })()
   const fitScores = useMemo<Map<string, FitScore>>(() => {
     if (!effectiveAnalysis) return new Map()
     const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
-    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis)]))
+    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis, profileRegion)]))
   }, [effectiveAnalysis, browseData, curatedData])
 
   // Collect all distinct sources across both tabs for the quick-filter chips
@@ -298,14 +340,39 @@ export default function JobsPage() {
   else if (sort === 'match' || (PERCENTAGE_ENABLE && effectiveAnalysis && sort === 'default'))
     browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
 
-  // For You always sorted highest → lowest match when percentage feature is on
-  const curatedJobs = applySourceFilter(
-    PERCENTAGE_ENABLE && effectiveAnalysis
-      ? [...(curatedData?.jobs ?? [])].sort(
-          (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
-        )
-      : (curatedData?.jobs ?? [])
+  // Candidate's years — prefer live resume analysis, fall back to profile setting
+  const candidateYears = effectiveAnalysis?.yearsOfExperience ?? profileYears ?? 0
+
+  // For You: filter out jobs whose stated experience requirement exceeds the
+  // candidate's years by more than 2 (e.g. a 3yr candidate won't see "6-8 years").
+  // Jobs with no stated requirement are always kept.
+  const experienceFilteredJobs = useMemo(() => {
+    const all = curatedData?.jobs ?? []
+    if (!candidateYears) return all
+    return all.filter(job => {
+      const required = parseRequiredYears(job.description ?? '')
+      return required === null || required <= candidateYears + 2
+    })
+  }, [curatedData, candidateYears])
+
+  const curatedJobsFiltered = applySourceFilter(
+    (() => {
+      const base = [...experienceFilteredJobs]
+      if (curatedSort === 'title')   return base.sort((a, b) => a.title.localeCompare(b.title))
+      if (curatedSort === 'company') return base.sort((a, b) => a.company.localeCompare(b.company))
+      if (curatedSort === 'latest')  return base.sort((a, b) => {
+        const da = a.date_posted ? new Date(a.date_posted).getTime() : 0
+        const db = b.date_posted ? new Date(b.date_posted).getTime() : 0
+        return db - da
+      })
+      // 'match' (default): sort by fit score when available, else keep backend order
+      if (PERCENTAGE_ENABLE && effectiveAnalysis)
+        return base.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
+      return base
+    })()
   )
+  const curatedJobs = curatedJobsFiltered
+  const expFilteredCount = (curatedData?.jobs?.length ?? 0) - experienceFilteredJobs.length
 
   // Chips showing which profile attributes drive the curated feed
   const expChip = effectiveExperienceLevel
@@ -441,6 +508,17 @@ export default function JobsPage() {
                 </div>
               </div>
 
+              {/* Behavioral signal hint */}
+              {hasBehavioralData && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/60 border border-slate-700/60 rounded-lg text-[11px] text-slate-400">
+                  <span className="text-emerald-400">↑</span>
+                  Ranking tuned from {behavioralSignals!.count} saved &amp; applied job{behavioralSignals!.count !== 1 ? 's' : ''}
+                  {behavioralTitles.length > 0 && (
+                    <span className="text-slate-600">· {behavioralTitles.slice(0, 2).join(', ')}{behavioralTitles.length > 2 ? ` +${behavioralTitles.length - 2} more` : ''}</span>
+                  )}
+                </div>
+              )}
+
               {curatedLoading && <SkeletonGrid />}
 
               {!curatedLoading && curatedJobs.length === 0 && (
@@ -483,10 +561,30 @@ export default function JobsPage() {
                       )}
                     </div>
                   )}
-                  <p className="text-sm text-slate-500">
-                    <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
-                  </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-slate-500">
+                      <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
+                      {expFilteredCount > 0 && (
+                        <span className="ml-2 text-slate-600 text-xs">
+                          · {expFilteredCount} hidden (experience requirement too high)
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <SortAsc size={13} className="text-slate-500" />
+                      <select
+                        className="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        value={curatedSort}
+                        onChange={e => setCuratedSort(e.target.value as CuratedSortKey)}
+                      >
+                        <option value="match">Sort: Best Match</option>
+                        <option value="latest">Sort: Latest</option>
+                        <option value="title">Sort: Title A→Z</option>
+                        <option value="company">Sort: Company A→Z</option>
+                      </select>
+                    </div>
+                  </div>
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
                 </>
               )}
             </>
@@ -602,7 +700,7 @@ export default function JobsPage() {
           )}
 
           {!browseLoading && browseJobs.length > 0 && (
-            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
           )}
         </div>
       )}

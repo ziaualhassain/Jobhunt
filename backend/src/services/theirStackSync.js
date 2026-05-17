@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { pool } = require('../db/database');
+const { enrichMissingTitles } = require('./titleExtractor');
 
 function stripHtml(html = '') {
   return html
@@ -97,7 +98,7 @@ async function syncRegion({ code, region, pages }) {
              salary, job_type, tags, logo, date_posted, region, fetched_at)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
           ON CONFLICT (job_id) DO UPDATE SET
-            title       = EXCLUDED.title,
+            title       = CASE WHEN EXCLUDED.title != '' THEN EXCLUDED.title ELSE theirstack_jobs.title END,
             company     = EXCLUDED.company,
             location    = EXCLUDED.location,
             description = EXCLUDED.description,
@@ -155,11 +156,17 @@ async function syncTheirStackJobs() {
     }
   }
   console.log(`[TheirStack] Full sync complete — ${total} jobs stored across all regions`);
+  // Async — don't block the sync cycle
+  enrichMissingTitles().catch(err => console.error('[TitleExtractor] Post-sync run failed:', err.message));
 }
 
 function startTheirStackSync() {
   syncTheirStackJobs();
   setInterval(syncTheirStackJobs, 6 * 60 * 60 * 1000); // refresh every 6 hours
+
+  // Enrich titles on startup for any existing blank-title rows in DB,
+  // independent of REFRESH_THEIRSTACK (enrichment only needs ANTHROPIC_API_KEY)
+  enrichMissingTitles().catch(err => console.error('[TitleExtractor] Startup run failed:', err.message));
 }
 
 module.exports = { startTheirStackSync };

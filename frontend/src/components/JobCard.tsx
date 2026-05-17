@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, Bot, Loader2, AlertCircle, Zap } from 'lucide-react'
 import type { Job } from '../types'
 import type { FitScore } from '../lib/jobScorer'
-import { scoreColor, scoreLabel } from '../lib/jobScorer'
+import { scoreLabel, extractTitleFromDescription } from '../lib/jobScorer'
 import type { ResumeAnalysis } from '../lib/api'
 import { deepScoreJob } from '../lib/api'
 import type { DeepScore } from '../lib/api'
@@ -25,6 +25,7 @@ interface Props {
   onSave: (job: Job) => void
   fitScore?: FitScore
   resumeAnalysis?: ResumeAnalysis | null
+  profileRegion?: string
 }
 
 function ScoreBar({ value, label }: { value: number; label: string }) {
@@ -42,7 +43,40 @@ function ScoreBar({ value, label }: { value: number; label: string }) {
   )
 }
 
-export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis }: Props) {
+function ScoreCircle({ score, onClick }: { score: number; onClick: () => void }) {
+  const r = 16
+  const circ = 2 * Math.PI * r
+  const offset = circ * (1 - score / 100)
+  const color = score >= 80 ? '#166534' : score >= 65 ? '#4ade80' : score >= 45 ? '#eab308' : '#64748b'
+  const textColor = score >= 80 ? 'text-green-800' : score >= 65 ? 'text-green-400' : score >= 45 ? 'text-yellow-400' : 'text-slate-400'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Match score: ${score}% — click for breakdown`}
+      className="relative shrink-0 hover:scale-110 transition-transform cursor-pointer"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90">
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#1e293b" strokeWidth="3.5" />
+        <circle
+          cx="20" cy="20" r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+        />
+      </svg>
+      <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none ${textColor}`}>
+        {score}
+      </span>
+    </button>
+  )
+}
+
+export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis, profileRegion }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [scoreOpen, setScoreOpen] = useState(false)
   const [aiScore, setAiScore] = useState<DeepScore | null>(null)
@@ -50,6 +84,8 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
 
   const sourceClass = SOURCE_COLORS[job.source] ?? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
   const tags = job.tags ? job.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) : []
+  const displayTitle = job.title?.trim() || extractTitleFromDescription(job.description ?? '') || 'Untitled Position'
+  const isTitleExtracted = !job.title?.trim() && displayTitle !== 'Untitled Position'
 
   const deepMutation = useMutation({
     mutationFn: () => deepScoreJob(resumeAnalysis!, job),
@@ -74,26 +110,30 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           {/* Title row */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="font-semibold text-slate-100 truncate leading-snug">{job.title}</h3>
+              <h3 className="font-semibold text-slate-100 truncate leading-snug">
+                {displayTitle}
+                {isTitleExtracted && (
+                  <span className="ml-1.5 text-[9px] font-normal text-slate-500 align-middle">from description</span>
+                )}
+              </h3>
               <div className="flex items-center gap-1.5 mt-0.5 text-sm text-slate-400">
                 <Building2 size={13} className="shrink-0" />
                 <span className="truncate">{job.company}</span>
               </div>
             </div>
 
-            {/* Badges: fit score + source */}
+            {/* Badges: fit score + source + new */}
             <div className="flex items-center gap-1.5 shrink-0">
               {PERCENTAGE_ENABLE && displayScore && (
-                <button
-                  type="button"
-                  onClick={() => setScoreOpen(v => !v)}
-                  className={`badge border text-[10px] font-semibold cursor-pointer hover:opacity-90 transition-opacity ${scoreColor(displayScore.overall)}`}
-                  title={scoreLabel(displayScore.overall)}
-                >
-                  {displayScore.overall}% match
-                </button>
+                <ScoreCircle score={displayScore.overall} onClick={() => setScoreOpen(v => !v)} />
               )}
               <span className={`badge border text-[10px] ${sourceClass}`}>{job.source}</span>
+              {job.date_posted && (() => {
+                const daysOld = (Date.now() - new Date(job.date_posted).getTime()) / 86_400_000
+                return daysOld <= 3 ? (
+                  <span className="badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">New</span>
+                ) : null
+              })()}
             </div>
           </div>
 
@@ -140,18 +180,95 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           {/* ── Fit score breakdown panel ─────────────────────────────────── */}
           {PERCENTAGE_ENABLE && fitScore && scoreOpen && (
             <div className="mt-3 rounded-xl border border-slate-700/60 bg-slate-800/40 p-3 space-y-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Resume fit breakdown</p>
 
-              <div className="space-y-1.5">
-                <ScoreBar value={aiScore ? aiScore.score : fitScore.skills}  label="Skills" />
-                <ScoreBar value={fitScore.level} label="Level" />
-                <ScoreBar value={fitScore.role}  label="Role" />
+              {/* Header with overall score */}
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Match score breakdown</p>
+                <span className={`text-xs font-bold ${displayScore!.overall >= 90 ? 'text-emerald-400' : displayScore!.overall >= 75 ? 'text-yellow-400' : displayScore!.overall >= 50 ? 'text-orange-400' : 'text-slate-400'}`}>
+                  {displayScore!.overall}% — {scoreLabel(displayScore!.overall)}
+                </span>
               </div>
 
-              {/* Matched / missing chips */}
+              {/* Your profile requirements */}
+              {resumeAnalysis && (
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold mb-1.5">Your requirements</p>
+                  <div className="flex flex-wrap gap-1">
+                    {profileRegion && (() => {
+                      const jobText = `${job.title} ${job.tags ?? ''} ${job.description ?? ''} ${job.location ?? ''}`.toLowerCase()
+                      const matched = jobText.includes(profileRegion.toLowerCase()) || profileRegion.toLowerCase() === 'remote'
+                      return (
+                        <span className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} 📍{profileRegion}
+                        </span>
+                      )
+                    })()}
+                    {resumeAnalysis.experienceLevel && (() => {
+                      const lvlMap: Record<string, number> = { Junior: 1, 'Mid-level': 2, Senior: 3, Lead: 4, Staff: 5, Principal: 6 }
+                      const jText = `${job.title} ${job.description ?? ''}`.toLowerCase()
+                      const jLvl = /\bsenior\b/.test(jText) ? 3 : /\b(junior|entry)\b/.test(jText) ? 1 : /\b(mid[- ]level|intermediate)\b/.test(jText) ? 2 : /\b(lead|staff|principal)\b/.test(jText) ? 4 : 2
+                      const pLvl = lvlMap[resumeAnalysis.experienceLevel] ?? 2
+                      const matched = Math.abs(jLvl - pLvl) <= 1
+                      return (
+                        <span className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} {resumeAnalysis.experienceLevel}{resumeAnalysis.yearsOfExperience ? ` (${resumeAnalysis.yearsOfExperience}y)` : ''}
+                        </span>
+                      )
+                    })()}
+                    {[...new Set([...resumeAnalysis.skills, ...(resumeAnalysis.searchKeywords ?? [])])].slice(0, 12).map(skill => {
+                      const jobText = `${job.title} ${job.tags ?? ''} ${job.description ?? ''}`.toLowerCase()
+                      const matched = jobText.includes(skill.toLowerCase())
+                      return (
+                        <span key={skill} className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} {skill}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Why this job: reasons chips */}
+              {fitScore.reasons && fitScore.reasons.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {fitScore.reasons.map(r => (
+                    <span key={r} className="badge bg-slate-800/60 text-slate-400 border border-slate-700/60 text-[10px]">
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Score formula explanation */}
+              <div className="rounded-lg bg-slate-900/50 border border-slate-700/40 px-2.5 py-2 space-y-1.5">
+                <p className="text-[10px] text-slate-500 font-medium mb-2">How this score is calculated</p>
+                <ScoreBar value={aiScore ? aiScore.score : fitScore.skills} label="Skills" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">
+                  Skill overlap with your profile keywords · {fitScore.roleActive ? '40%' : '50%'}
+                </p>
+                <ScoreBar value={fitScore.level} label="Level" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">
+                  Seniority match + years-of-experience fit · {fitScore.roleActive ? '25%' : '35%'}
+                </p>
+                {fitScore.roleActive && (
+                  <>
+                    <ScoreBar value={fitScore.role} label="Role" />
+                    <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Job title alignment with your target roles · 20%</p>
+                  </>
+                )}
+                <ScoreBar value={fitScore.location ?? 60} label="Location" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Region preference match (remote / country) · 15%</p>
+                {!fitScore.roleActive && (
+                  <p className="text-[9px] text-slate-500 italic mt-1">
+                    Role dimension inactive — add target job titles via resume upload to enable it
+                  </p>
+                )}
+              </div>
+
+              {/* Pros — matched skills */}
               {fitScore.matchedSkills.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-600 mb-1">Matched</p>
+                  <p className="text-[10px] text-emerald-500 font-semibold mb-1.5">✓ Pros — skills you have</p>
                   <div className="flex flex-wrap gap-1">
                     {fitScore.matchedSkills.map(s => (
                       <span key={s} className="badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">✓ {s}</span>
@@ -160,9 +277,10 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
                 </div>
               )}
 
+              {/* Cons — skill gaps */}
               {(aiScore?.skill_gaps ?? fitScore.missingSignals).length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-600 mb-1">Gaps</p>
+                  <p className="text-[10px] text-red-400 font-semibold mb-1.5">✗ Cons — skills to develop</p>
                   <div className="flex flex-wrap gap-1">
                     {(aiScore?.skill_gaps ?? fitScore.missingSignals).map(s => (
                       <span key={s} className="badge bg-red-500/10 text-red-400 border border-red-500/20 text-[10px]">✗ {s}</span>
