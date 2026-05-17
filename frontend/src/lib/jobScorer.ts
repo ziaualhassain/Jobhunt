@@ -17,10 +17,11 @@ const LEVEL_MAP: Record<string, number> = {
 // Score degradation per seniority level of distance
 const LEVEL_SCORE = [100, 75, 45, 20, 10, 5]
 
+// Exported so JobsPage can pre-filter the "For You" list before scoring.
 // Parse the minimum years of experience required from a job description.
 // Handles: "5+ years", "3-5 years", "at least 4 years", "minimum 6 years",
 //          "5 years of experience", "5 years experience"
-function parseRequiredYears(text: string): number | null {
+export function parseRequiredYears(text: string): number | null {
   const t = text.toLowerCase()
   const patterns = [
     /\bat\s+least\s+(\d+)\s+years?/,

@@ -9,7 +9,7 @@ import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
-import { scoreJob } from '../lib/jobScorer'
+import { scoreJob, parseRequiredYears } from '../lib/jobScorer'
 import type { FitScore } from '../lib/jobScorer'
 
 type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
@@ -298,14 +298,30 @@ export default function JobsPage() {
   else if (sort === 'match' || (PERCENTAGE_ENABLE && effectiveAnalysis && sort === 'default'))
     browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
 
-  // For You always sorted highest → lowest match when percentage feature is on
-  const curatedJobs = applySourceFilter(
+  // Candidate's years — prefer live resume analysis, fall back to profile setting
+  const candidateYears = effectiveAnalysis?.yearsOfExperience ?? profileYears ?? 0
+
+  // For You: filter out jobs whose stated experience requirement exceeds the
+  // candidate's years by more than 2 (e.g. a 3yr candidate won't see "6-8 years").
+  // Jobs with no stated requirement are always kept.
+  const experienceFilteredJobs = useMemo(() => {
+    const all = curatedData?.jobs ?? []
+    if (!candidateYears) return all
+    return all.filter(job => {
+      const required = parseRequiredYears(job.description ?? '')
+      return required === null || required <= candidateYears + 2
+    })
+  }, [curatedData, candidateYears])
+
+  const curatedJobsFiltered = applySourceFilter(
     PERCENTAGE_ENABLE && effectiveAnalysis
-      ? [...(curatedData?.jobs ?? [])].sort(
+      ? [...experienceFilteredJobs].sort(
           (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
         )
-      : (curatedData?.jobs ?? [])
+      : experienceFilteredJobs
   )
+  const curatedJobs = curatedJobsFiltered
+  const expFilteredCount = (curatedData?.jobs?.length ?? 0) - experienceFilteredJobs.length
 
   // Chips showing which profile attributes drive the curated feed
   const expChip = effectiveExperienceLevel
@@ -485,6 +501,11 @@ export default function JobsPage() {
                   )}
                   <p className="text-sm text-slate-500">
                     <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
+                    {expFilteredCount > 0 && (
+                      <span className="ml-2 text-slate-600 text-xs">
+                        · {expFilteredCount} hidden (experience requirement too high)
+                      </span>
+                    )}
                   </p>
                   <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
                 </>
