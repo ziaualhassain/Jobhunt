@@ -28,13 +28,14 @@ const COUNTRY_TO_REGION: Record<string, string> = {
 }
 
 function JobGrid({
-  jobs, savedIds, onSave, scores, resumeAnalysis,
+  jobs, savedIds, onSave, scores, resumeAnalysis, profileRegion,
 }: {
   jobs: Job[]
   savedIds: Set<string>
   onSave: (j: Job) => void
   scores?: Map<string, FitScore>
   resumeAnalysis?: ResumeAnalysis | null
+  profileRegion?: string
 }) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -46,6 +47,7 @@ function JobGrid({
           onSave={onSave}
           fitScore={scores?.get(job.job_id)}
           resumeAnalysis={resumeAnalysis}
+          profileRegion={profileRegion}
         />
       ))}
     </div>
@@ -273,7 +275,18 @@ export default function JobsPage() {
   // ── Fit scores ───────────────────────────────────────────────────────────────
   // Resume upload takes priority; fall back to profile-derived analysis so For
   // You cards show badges without requiring a resume.
-  const effectiveAnalysis = resumeAnalysis ?? profileAsAnalysis
+  // Profile preferences (experience level, years) always override resume-detected
+  // values so the AI doesn't call the user "junior" after they set Mid-level 3y.
+  const effectiveAnalysis: typeof profileAsAnalysis = (() => {
+    const base = resumeAnalysis ?? profileAsAnalysis
+    if (!base) return null
+    if (!effectiveExperienceLevel && profileYears == null) return base
+    return {
+      ...base,
+      experienceLevel: effectiveExperienceLevel || base.experienceLevel,
+      yearsOfExperience: profileYears ?? base.yearsOfExperience,
+    }
+  })()
   const fitScores = useMemo<Map<string, FitScore>>(() => {
     if (!effectiveAnalysis) return new Map()
     const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
@@ -507,7 +520,7 @@ export default function JobsPage() {
                       </span>
                     )}
                   </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
                 </>
               )}
             </>
@@ -623,7 +636,7 @@ export default function JobsPage() {
           )}
 
           {!browseLoading && browseJobs.length > 0 && (
-            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
           )}
         </div>
       )}

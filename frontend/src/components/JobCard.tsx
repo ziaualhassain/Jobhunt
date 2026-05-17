@@ -25,6 +25,7 @@ interface Props {
   onSave: (job: Job) => void
   fitScore?: FitScore
   resumeAnalysis?: ResumeAnalysis | null
+  profileRegion?: string
 }
 
 function ScoreBar({ value, label }: { value: number; label: string }) {
@@ -75,7 +76,7 @@ function ScoreCircle({ score, onClick }: { score: number; onClick: () => void })
   )
 }
 
-export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis }: Props) {
+export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis, profileRegion }: Props) {
   const [expanded, setExpanded] = useState(false)
   const [scoreOpen, setScoreOpen] = useState(false)
   const [aiScore, setAiScore] = useState<DeepScore | null>(null)
@@ -174,6 +175,45 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
                   {displayScore!.overall}% — {scoreLabel(displayScore!.overall)}
                 </span>
               </div>
+
+              {/* Your profile requirements */}
+              {resumeAnalysis && (
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold mb-1.5">Your requirements</p>
+                  <div className="flex flex-wrap gap-1">
+                    {profileRegion && (() => {
+                      const jobText = `${job.title} ${job.tags ?? ''} ${job.description ?? ''} ${job.location ?? ''}`.toLowerCase()
+                      const matched = jobText.includes(profileRegion.toLowerCase()) || profileRegion.toLowerCase() === 'remote'
+                      return (
+                        <span className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} 📍{profileRegion}
+                        </span>
+                      )
+                    })()}
+                    {resumeAnalysis.experienceLevel && (() => {
+                      const lvlMap: Record<string, number> = { Junior: 1, 'Mid-level': 2, Senior: 3, Lead: 4, Staff: 5, Principal: 6 }
+                      const jText = `${job.title} ${job.description ?? ''}`.toLowerCase()
+                      const jLvl = /\bsenior\b/.test(jText) ? 3 : /\b(junior|entry)\b/.test(jText) ? 1 : /\b(mid[- ]level|intermediate)\b/.test(jText) ? 2 : /\b(lead|staff|principal)\b/.test(jText) ? 4 : 2
+                      const pLvl = lvlMap[resumeAnalysis.experienceLevel] ?? 2
+                      const matched = Math.abs(jLvl - pLvl) <= 1
+                      return (
+                        <span className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} {resumeAnalysis.experienceLevel}{resumeAnalysis.yearsOfExperience ? ` (${resumeAnalysis.yearsOfExperience}y)` : ''}
+                        </span>
+                      )
+                    })()}
+                    {[...new Set([...resumeAnalysis.skills, ...(resumeAnalysis.searchKeywords ?? [])])].slice(0, 12).map(skill => {
+                      const jobText = `${job.title} ${job.tags ?? ''} ${job.description ?? ''}`.toLowerCase()
+                      const matched = jobText.includes(skill.toLowerCase())
+                      return (
+                        <span key={skill} className={`badge border text-[10px] ${matched ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-700/50 text-slate-500 border-slate-600'}`}>
+                          {matched ? '✓' : '·'} {skill}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Score formula explanation */}
               <div className="rounded-lg bg-slate-900/50 border border-slate-700/40 px-2.5 py-2 space-y-1.5">
