@@ -41,17 +41,24 @@ async function getPublicKey(kid) {
 const router = express.Router();
 
 router.post('/register', async (req, res) => {
-  const { email, password, name } = req.body;
+  const { email, password, name, role = 'job_seeker', companyName, companyEmail } = req.body;
   if (!email || !password || !name)
     return res.status(400).json({ error: 'email, password and name are required' });
   if (password.length < 8)
     return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  if (role === 'recruiter' && (!companyName || !companyEmail))
+    return res.status(400).json({ error: 'companyName and companyEmail are required for recruiters' });
+  if (!['job_seeker', 'recruiter'].includes(role))
+    return res.status(400).json({ error: 'Invalid role' });
 
   try {
     const hash = await bcrypt.hash(password, 12);
     const { rows } = await pool.query(
-      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, created_at',
-      [email.toLowerCase().trim(), hash, name.trim()]
+      `INSERT INTO users (email, password_hash, name, role, company_name, company_email)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, email, name, role, company_name, company_email, created_at`,
+      [email.toLowerCase().trim(), hash, name.trim(), role,
+       companyName?.trim() || null, companyEmail?.toLowerCase().trim() || null]
     );
     const user = rows[0];
     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -75,7 +82,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password' });
 
     const token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role ?? 'job_seeker' } });
   } catch (err) {
     console.error('[Auth] login error:', err.message);
     res.status(500).json({ error: 'Login failed' });
@@ -125,11 +132,18 @@ router.post('/oauth', async (req, res) => {
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT id, email, name, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, role, company_name, company_email, created_at FROM users WHERE id = $1',
       [req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'User not found' });
-    res.json(rows[0]);
+    const u = rows[0];
+    res.json({
+      id: u.id, email: u.email, name: u.name,
+      role: u.role ?? 'job_seeker',
+      companyName: u.company_name,
+      companyEmail: u.company_email,
+      created_at: u.created_at,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
   }

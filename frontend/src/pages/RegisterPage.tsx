@@ -1,17 +1,22 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Cloud, Loader2, AlertCircle } from 'lucide-react'
+import { Cloud, Loader2, AlertCircle, Briefcase, User } from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { registerUser } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+
+type Role = 'job_seeker' | 'recruiter'
 
 export default function RegisterPage() {
   const { login } = useAuth()
   const { loginWithRedirect, isLoading: auth0Loading } = useAuth0()
   const navigate = useNavigate()
+  const [role, setRole] = useState<Role>('job_seeker')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [companyEmail, setCompanyEmail] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -20,9 +25,16 @@ export default function RegisterPage() {
     setError('')
     setLoading(true)
     try {
-      const { token, user } = await registerUser(name, email, password)
+      const { token, user } = await registerUser(
+        name,
+        email,
+        password,
+        role,
+        role === 'recruiter' ? companyName : undefined,
+        role === 'recruiter' ? companyEmail : undefined,
+      )
       login(token, user)
-      navigate('/')
+      navigate(role === 'recruiter' ? '/recruiter' : '/')
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
       setError(e.response?.data?.error ?? 'Registration failed')
@@ -41,6 +53,34 @@ export default function RegisterPage() {
 
         <div className="card p-6 space-y-4">
           <h1 className="text-lg font-semibold text-slate-100">Create account</h1>
+
+          {/* Role toggle */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setRole('job_seeker')}
+              className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border transition-all ${
+                role === 'job_seeker'
+                  ? 'bg-brand-500/15 border-brand-500/40 text-brand-300 ring-1 ring-brand-500/30'
+                  : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+              }`}
+            >
+              <User size={18} strokeWidth={1.75} />
+              <span className="text-xs font-medium">Job Seeker</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('recruiter')}
+              className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border transition-all ${
+                role === 'recruiter'
+                  ? 'bg-brand-500/15 border-brand-500/40 text-brand-300 ring-1 ring-brand-500/30'
+                  : 'border-slate-700 text-slate-400 hover:border-slate-600 hover:text-slate-300'
+              }`}
+            >
+              <Briefcase size={18} strokeWidth={1.75} />
+              <span className="text-xs font-medium">Recruiter</span>
+            </button>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
@@ -69,6 +109,29 @@ export default function RegisterPage() {
               minLength={8}
               required
             />
+
+            {role === 'recruiter' && (
+              <>
+                <div className="h-px bg-slate-800" />
+                <p className="text-xs text-slate-500">Company details</p>
+                <input
+                  type="text"
+                  className="input w-full"
+                  placeholder="Company name"
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
+                  required={role === 'recruiter'}
+                />
+                <input
+                  type="email"
+                  className="input w-full"
+                  placeholder="Work email (company email)"
+                  value={companyEmail}
+                  onChange={e => setCompanyEmail(e.target.value)}
+                  required={role === 'recruiter'}
+                />
+              </>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg p-3">

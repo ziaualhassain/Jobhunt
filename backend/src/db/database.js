@@ -162,6 +162,75 @@ async function initDb() {
   await pool.query(`
     UPDATE theirstack_jobs SET region = 'India' WHERE region IS NULL;
   `);
+  // ── Career page watchlist + scraped jobs ────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS watched_companies (
+      id              SERIAL PRIMARY KEY,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_name    VARCHAR(200) NOT NULL,
+      career_url      TEXT NOT NULL,
+      is_active       BOOLEAN DEFAULT true,
+      last_scraped_at TIMESTAMPTZ,
+      job_count       INTEGER DEFAULT 0,
+      scrape_error    TEXT,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, career_url)
+    );
+    CREATE TABLE IF NOT EXISTS default_career_pages (
+      id              SERIAL PRIMARY KEY,
+      company_name    VARCHAR(200) NOT NULL,
+      career_url      TEXT UNIQUE NOT NULL,
+      last_scraped_at TIMESTAMPTZ,
+      job_count       INTEGER DEFAULT 0,
+      scrape_error    TEXT
+    );
+    CREATE TABLE IF NOT EXISTS careers (
+      id           SERIAL PRIMARY KEY,
+      job_id       TEXT UNIQUE NOT NULL,
+      company_name TEXT NOT NULL,
+      career_url   TEXT NOT NULL,
+      title        TEXT,
+      location     TEXT,
+      region       TEXT,
+      url          TEXT,
+      description  TEXT,
+      job_type     TEXT DEFAULT 'Full-time',
+      tags         TEXT DEFAULT '',
+      scraped_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
+  // ── Recruiter feature ──────────────────────────────────────────────────────
+  await pool.query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'job_seeker';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_email TEXT;
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS jobhunter_jobs (
+      id               SERIAL PRIMARY KEY,
+      recruiter_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title            TEXT NOT NULL,
+      description      TEXT NOT NULL DEFAULT '',
+      location         TEXT NOT NULL DEFAULT 'Remote',
+      job_type         TEXT NOT NULL DEFAULT 'Full-time',
+      experience_level TEXT NOT NULL DEFAULT 'Mid-level',
+      skills           TEXT NOT NULL DEFAULT '',
+      salary           TEXT,
+      is_active        BOOLEAN DEFAULT TRUE,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS job_applications (
+      id           SERIAL PRIMARY KEY,
+      job_id       INTEGER NOT NULL REFERENCES jobhunter_jobs(id) ON DELETE CASCADE,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      cover_letter TEXT DEFAULT '',
+      status       TEXT NOT NULL DEFAULT 'Applied',
+      applied_at   TIMESTAMPTZ DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(job_id, user_id)
+    );
+  `);
   console.log('[DB] Schema ready');
 }
 

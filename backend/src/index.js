@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const { initDb } = require('./db/database');
 const { startTheirStackSync } = require('./services/theirStackSync');
+const { startCareerPageSync } = require('./services/careerPageScraper');
 const jobsRouter = require('./routes/jobs');
 const applicationsRouter = require('./routes/applications');
 const resumeRouter = require('./routes/resume');
@@ -11,6 +12,10 @@ const authRouter = require('./routes/auth');
 const profileRouter = require('./routes/profile');
 const interviewRouter = require('./routes/interview');
 const prepRouter = require('./routes/prep');
+const applicationProfileRouter = require('./routes/applicationProfile');
+const autoApplyRouter = require('./routes/autoApply');
+const careerPagesRouter = require('./routes/careerPages');
+const recruiterRouter = require('./routes/recruiter');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,6 +30,10 @@ app.use('/api/applications', applicationsRouter);
 app.use('/api/resume', resumeRouter);
 app.use('/api/interview', interviewRouter);
 app.use('/api/prep', prepRouter);
+app.use('/api/application-profile', applicationProfileRouter);
+app.use('/api/auto-apply', autoApplyRouter);
+app.use('/api/career-pages', careerPagesRouter);
+app.use('/api/recruiter', recruiterRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 
@@ -40,6 +49,7 @@ initDb()
   .then(() => {
     app.listen(PORT, () => console.log(`JobHunt API running on http://localhost:${PORT}`));
     startTheirStackSync();
+    startCareerPageSync();
   })
   .catch(err => {
     console.error('\nDatabase init failed!');

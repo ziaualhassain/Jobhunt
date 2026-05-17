@@ -17,8 +17,15 @@ export async function loginUser(email: string, password: string): Promise<{ toke
   return res.data;
 }
 
-export async function registerUser(name: string, email: string, password: string): Promise<{ token: string; user: User }> {
-  const res = await api.post('/auth/register', { name, email, password });
+export async function registerUser(
+  name: string,
+  email: string,
+  password: string,
+  role?: string,
+  companyName?: string,
+  companyEmail?: string,
+): Promise<{ token: string; user: User }> {
+  const res = await api.post('/auth/register', { name, email, password, role, companyName, companyEmail });
   return res.data;
 }
 
@@ -38,7 +45,9 @@ export interface UserPreferences {
   bio?: string
   interests: string[]
   keywords: string[]
+  jobTitles?: string[]
   experienceLevel: string
+  yearsOfExperience?: number
   remote: boolean
   location: string
   jobType: string
@@ -65,6 +74,146 @@ export async function updateProfile(data: {
   return res.data;
 }
 
+// ── Application Profile ───────────────────────────────────────────────────────
+
+export interface ApplicationProfile {
+  phone?: string
+  linkedinUrl?: string
+  githubUrl?: string
+  portfolioUrl?: string
+  intro?: string
+  currentCTC?: string
+  expectedCTC?: string
+  noticePeriod?: string
+}
+
+export interface UserResume {
+  id: number
+  label: string
+  original_name: string
+  file_size: number
+  is_primary: boolean
+  created_at: string
+}
+
+export interface JobCredential {
+  id: number
+  site: string
+  site_email: string
+  created_at: string
+}
+
+export interface Questionnaire {
+  // Work authorization
+  workAuthorized?: string         // 'yes' | 'no'
+  requiresSponsorship?: string    // 'yes' | 'no'
+  citizenshipStatus?: string      // 'citizen' | 'permanent_resident' | 'work_visa' | 'student_visa' | 'other'
+  // Education
+  highestDegree?: string          // 'high_school' | 'associate' | 'bachelor' | 'master' | 'phd' | 'other'
+  degreeField?: string
+  university?: string
+  graduationYear?: string
+  // Work preferences
+  willingToRelocate?: string      // 'yes' | 'no' | 'open'
+  preferredWorkMode?: string      // 'remote' | 'hybrid' | 'onsite' | 'flexible'
+  // EEO / diversity
+  gender?: string
+  veteranStatus?: string          // 'no' | 'yes' | 'prefer_not_to_say'
+  disabilityStatus?: string       // 'no' | 'yes' | 'prefer_not_to_say'
+  ethnicity?: string
+  // Other
+  languages?: string
+  drivingLicense?: string         // 'yes' | 'no'
+}
+
+export async function getQuestionnaire(): Promise<Questionnaire> {
+  const res = await api.get('/application-profile/questionnaire')
+  return res.data
+}
+
+export async function updateQuestionnaire(data: Questionnaire): Promise<Questionnaire> {
+  const res = await api.put('/application-profile/questionnaire', data)
+  return res.data
+}
+
+export async function getApplicationProfile(): Promise<ApplicationProfile> {
+  const res = await api.get('/application-profile')
+  return res.data
+}
+
+export async function updateApplicationProfile(data: ApplicationProfile): Promise<ApplicationProfile> {
+  const res = await api.put('/application-profile', data)
+  return res.data
+}
+
+export async function listResumes(): Promise<UserResume[]> {
+  const res = await api.get('/application-profile/resumes')
+  return res.data
+}
+
+export async function uploadResume(file: File, label: string): Promise<UserResume> {
+  const form = new FormData()
+  form.append('resume', file)
+  form.append('label', label)
+  const res = await api.post('/application-profile/resumes', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
+}
+
+export async function setResumeAsPrimary(id: number): Promise<void> {
+  await api.patch(`/application-profile/resumes/${id}/primary`)
+}
+
+export async function deleteResume(id: number): Promise<void> {
+  await api.delete(`/application-profile/resumes/${id}`)
+}
+
+export async function listCredentials(): Promise<JobCredential[]> {
+  const res = await api.get('/application-profile/credentials')
+  return res.data
+}
+
+export async function upsertCredential(site: string, email: string, password: string): Promise<JobCredential> {
+  const res = await api.post('/application-profile/credentials', { site, email, password })
+  return res.data
+}
+
+export async function deleteCredential(id: number): Promise<void> {
+  await api.delete(`/application-profile/credentials/${id}`)
+}
+
+// ── Auto Apply ────────────────────────────────────────────────────────────────
+
+export async function startAutoApply(data: {
+  jobUrl: string
+  jobTitle: string
+  jobCompany: string
+  jobSource: string
+  jobId?: string
+  jobLocation?: string
+  resumeId?: number
+}): Promise<{ runId: string }> {
+  const res = await api.post('/auto-apply/start', data)
+  return res.data
+}
+
+export async function checkSessionStatus(site: string): Promise<{ hasSession: boolean }> {
+  const res = await api.get(`/auto-apply/session-status/${site}`)
+  return res.data
+}
+
+/** Opens an SSE stream that triggers a visible browser login flow on the server.
+ *  Listen for `message` events (log lines) and the `done` event (saved/error). */
+export async function resumeAutoApply(runId: string): Promise<void> {
+  await api.post(`/auto-apply/resume/${runId}`)
+}
+
+export function createSessionSSE(site: string): EventSource {
+  const token = localStorage.getItem('token') ?? ''
+  return new EventSource(`/api/auto-apply/create-session/${encodeURIComponent(site)}?token=${encodeURIComponent(token)}`)
+}
+
 // ── Jobs ──────────────────────────────────────────────────────────────────────
 
 export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ jobs: Job[]; total: number }> {
@@ -80,7 +229,31 @@ export async function searchJobs(filters: Partial<SearchFilters>): Promise<{ job
   return res.data;
 }
 
+export interface DeepScore {
+  score: number
+  matched_skills: string[]
+  skill_gaps: string[]
+  seniority_fit: string
+  reasoning: string
+}
+
+export async function deepScoreJob(analysis: ResumeAnalysis, job: Job): Promise<DeepScore> {
+  const res = await api.post('/jobs/deep-score', { analysis, job })
+  return res.data
+}
+
 // ── Applications ──────────────────────────────────────────────────────────────
+
+export interface BehavioralSignals {
+  titles: string[]
+  skills: string[]
+  count: number
+}
+
+export async function getBehavioralSignals(): Promise<BehavioralSignals> {
+  const res = await api.get('/applications/signals');
+  return res.data;
+}
 
 export async function getApplications(status?: ApplicationStatus): Promise<Application[]> {
   const params = status ? { status } : {};
@@ -402,5 +575,122 @@ export async function addPlanFromMessage(data: {
   content: string; role?: string; company?: string; title?: string
 }): Promise<{ id: number; title: string }> {
   const res = await api.post('/prep/plans/from-message', data)
+  return res.data
+}
+
+// ── Career Page Watchlist ─────────────────────────────────────────────────────
+
+export interface WatchedCompany {
+  id: number
+  company_name: string
+  career_url: string
+  is_active: boolean
+  last_scraped_at: string | null
+  job_count: number
+  total_jobs: number
+  scrape_error: string | null
+  created_at: string
+}
+
+export async function listWatchedCompanies(): Promise<WatchedCompany[]> {
+  const res = await api.get('/career-pages')
+  return res.data
+}
+
+export async function addWatchedCompany(data: { company_name: string; career_url: string }): Promise<WatchedCompany> {
+  const res = await api.post('/career-pages', data)
+  return res.data
+}
+
+export async function removeWatchedCompany(id: number): Promise<void> {
+  await api.delete(`/career-pages/${id}`)
+}
+
+export async function scrapeWatchedCompany(id: number): Promise<{ scraped: number; error: string | null }> {
+  const res = await api.post(`/career-pages/${id}/scrape`)
+  return res.data
+}
+
+// ── Recruiter Jobs ─────────────────────────────────────────────────────────────
+
+export interface RecruiterJob {
+  id: number
+  job_id: string
+  title: string
+  company: string
+  description: string
+  location: string
+  job_type: string
+  experience_level: string
+  skills: string
+  salary: string
+  is_active: boolean
+  applicant_count: number
+  created_at: string
+}
+
+export interface Applicant {
+  id: number
+  user_id: number
+  name: string
+  email: string
+  status: string
+  cover_letter: string
+  applied_at: string
+}
+
+export async function postRecruiterJob(data: {
+  title: string
+  description: string
+  location: string
+  jobType: string
+  experienceLevel: string
+  skills: string
+  salary: string
+}): Promise<RecruiterJob> {
+  const res = await api.post('/recruiter/jobs', data)
+  return res.data
+}
+
+export async function getMyRecruiterJobs(): Promise<RecruiterJob[]> {
+  const res = await api.get('/recruiter/jobs')
+  return res.data
+}
+
+export async function updateRecruiterJob(jobId: string, data: Partial<{
+  title: string
+  description: string
+  location: string
+  jobType: string
+  experienceLevel: string
+  skills: string
+  salary: string
+  is_active: boolean
+}>): Promise<RecruiterJob> {
+  const res = await api.patch(`/recruiter/jobs/${jobId}`, data)
+  return res.data
+}
+
+export async function deleteRecruiterJob(jobId: string): Promise<void> {
+  await api.delete(`/recruiter/jobs/${jobId}`)
+}
+
+export async function getJobApplicants(jobId: string): Promise<Applicant[]> {
+  const res = await api.get(`/recruiter/jobs/${jobId}/applicants`)
+  return res.data
+}
+
+export async function updateApplicantStatus(jobId: string, userId: number, status: string): Promise<void> {
+  await api.patch(`/recruiter/jobs/${jobId}/applicants/${userId}`, { status })
+}
+
+// ── Job Seeker: apply to recruiter-posted jobs ────────────────────────────────
+
+export async function applyToJob(jobId: string, coverLetter?: string): Promise<void> {
+  await api.post(`/jobs/${jobId}/apply`, { coverLetter })
+}
+
+export async function getMyApplicationsToJobs(): Promise<string[]> {
+  const res = await api.get('/jobs/my-applications')
   return res.data
 }

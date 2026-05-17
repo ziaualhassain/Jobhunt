@@ -6,6 +6,9 @@ export interface User {
   id: number
   email: string
   name: string
+  role?: 'job_seeker' | 'recruiter'
+  companyName?: string
+  companyEmail?: string
 }
 
 interface AuthContextValue {
