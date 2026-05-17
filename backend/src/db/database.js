@@ -231,19 +231,20 @@ async function initDb() {
       UNIQUE(job_id, user_id)
     );
   `);
-  // ── job_applications column migrations (idempotent) ───────────────────────
-  await pool.query(`
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS phone TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS linkedin_url TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS current_role TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS experience_years TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_salary TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS notice_period TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS applicant_skills TEXT;
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS recruiter_notes TEXT DEFAULT '';
-    ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS skill_match_score INTEGER DEFAULT 0;
-  `);
+  // ── job_applications column migrations (idempotent, one per query) ──────────
+  const appCols = [
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS linkedin_url TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS current_role TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS experience_years TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_salary TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS notice_period TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS applicant_skills TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS recruiter_notes TEXT DEFAULT ''`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS skill_match_score INTEGER DEFAULT 0`,
+  ];
+  for (const sql of appCols) await pool.query(sql);
   console.log('[DB] Schema ready');
 }
 
