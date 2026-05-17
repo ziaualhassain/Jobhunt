@@ -22,6 +22,122 @@ function jobIdFromUrl(prefix, url) {
   return `${prefix}-${crypto.createHash('md5').update(url).digest('hex').slice(0, 16)}`;
 }
 
+// ─── Tech skill extraction ────────────────────────────────────────────────────
+
+const TECH_SKILL_PATTERNS = [
+  // Languages
+  [/\bpython\b/i,                               'Python'],
+  [/\bjava(?!script)\b/i,                       'Java'],
+  [/\btypescript\b/i,                           'TypeScript'],
+  [/\bjavascript\b/i,                           'JavaScript'],
+  [/\brust\b/i,                                 'Rust'],
+  [/\bgolang\b|\bgo\s+(?:developer|engineer|lang)\b/i, 'Go'],
+  [/\bruby\b/i,                                 'Ruby'],
+  [/\bphp\b/i,                                  'PHP'],
+  [/\bc\+\+\b/i,                                'C++'],
+  [/\bc#\b/i,                                   'C#'],
+  [/\bscala\b/i,                                'Scala'],
+  [/\bkotlin\b/i,                               'Kotlin'],
+  [/\bswift\b/i,                                'Swift'],
+  [/\belixir\b/i,                               'Elixir'],
+  [/\bhaskell\b/i,                              'Haskell'],
+  [/\bsolidity\b/i,                             'Solidity'],
+  // Frontend frameworks / tools
+  [/\breact(?:\.js)?\b/i,                       'React'],
+  [/\bvue(?:\.js)?\b/i,                         'Vue.js'],
+  [/\bangular\b/i,                              'Angular'],
+  [/\bnext\.js\b|\bnextjs\b/i,                  'Next.js'],
+  [/\bnuxt(?:\.js)?\b/i,                        'Nuxt.js'],
+  [/\bsvelte\b/i,                               'Svelte'],
+  [/\btailwind(?:\s+css)?\b/i,                  'Tailwind CSS'],
+  [/\bgraphql\b/i,                              'GraphQL'],
+  [/\bwebpack\b/i,                              'Webpack'],
+  [/\bvite\b/i,                                 'Vite'],
+  [/\bhtml5?\b/i,                               'HTML'],
+  [/\bcss3?\b/i,                                'CSS'],
+  // Backend / frameworks
+  [/\bnode(?:\.js)?\b|\bnodejs\b/i,             'Node.js'],
+  [/\bexpress(?:\.js)?\b/i,                     'Express'],
+  [/\bdjango\b/i,                               'Django'],
+  [/\bflask\b/i,                                'Flask'],
+  [/\bfastapi\b/i,                              'FastAPI'],
+  [/\bspring\s+boot\b/i,                        'Spring Boot'],
+  [/\bruby\s+on\s+rails\b|\brails\b/i,          'Rails'],
+  [/\blaravel\b/i,                              'Laravel'],
+  [/\bnestjs\b|\bnest\.js\b/i,                  'NestJS'],
+  // Databases
+  [/\bpostgresql\b|\bpostgres\b/i,              'PostgreSQL'],
+  [/\bmysql\b/i,                                'MySQL'],
+  [/\bmongodb\b/i,                              'MongoDB'],
+  [/\bredis\b/i,                                'Redis'],
+  [/\belasticsearch\b/i,                        'Elasticsearch'],
+  [/\bcassandra\b/i,                            'Cassandra'],
+  [/\bdynamodb\b/i,                             'DynamoDB'],
+  [/\bsnowflake\b/i,                            'Snowflake'],
+  [/\bbigquery\b/i,                             'BigQuery'],
+  [/\bsqlite\b/i,                               'SQLite'],
+  [/\bprisma\b/i,                               'Prisma'],
+  [/\bsql\b/i,                                  'SQL'],
+  [/\bnosql\b/i,                                'NoSQL'],
+  // Cloud & DevOps
+  [/\baws\b|\bamazon\s+web\s+services\b/i,      'AWS'],
+  [/\bgoogle\s+cloud\b|\bgcp\b/i,               'GCP'],
+  [/\bmicrosoft\s+azure\b|\bazure\b/i,          'Azure'],
+  [/\bkubernetes\b|\bk8s\b/i,                   'Kubernetes'],
+  [/\bdocker\b/i,                               'Docker'],
+  [/\bterraform\b/i,                            'Terraform'],
+  [/\bci\/cd\b/i,                               'CI/CD'],
+  [/\bjenkins\b/i,                              'Jenkins'],
+  [/\bgithub\s+actions\b/i,                     'GitHub Actions'],
+  [/\bansible\b/i,                              'Ansible'],
+  [/\bhelm\b/i,                                 'Helm'],
+  [/\bserverless\b/i,                           'Serverless'],
+  [/\bmicroservice\b/i,                         'Microservices'],
+  // ML / Data / AI
+  [/\bmachine\s+learning\b/i,                   'Machine Learning'],
+  [/\bdeep\s+learning\b/i,                      'Deep Learning'],
+  [/\bpytorch\b/i,                              'PyTorch'],
+  [/\btensorflow\b/i,                           'TensorFlow'],
+  [/\bscikit[- ]learn\b/i,                      'scikit-learn'],
+  [/\bpandas\b/i,                               'Pandas'],
+  [/\bnumpy\b/i,                                'NumPy'],
+  [/\bapache\s+spark\b|\bpyspark\b/i,           'Apache Spark'],
+  [/\bairflow\b/i,                              'Airflow'],
+  [/\blarge\s+language\s+models?\b|\bllms?\b/i, 'LLMs'],
+  [/\bcomputer\s+vision\b/i,                    'Computer Vision'],
+  [/\bnatural\s+language\s+processing\b|\bnlp\b/i, 'NLP'],
+  [/\bdata\s+science\b/i,                       'Data Science'],
+  [/\bmlops\b/i,                                'MLOps'],
+  // Mobile
+  [/\breact\s+native\b/i,                       'React Native'],
+  [/\bflutter\b/i,                              'Flutter'],
+  [/\bios\b/i,                                  'iOS'],
+  [/\bandroid\b/i,                              'Android'],
+  // APIs & architecture
+  [/\brest(?:ful)?\s*api\b/i,                   'REST API'],
+  [/\bgrpc\b/i,                                 'gRPC'],
+  [/\bwebsocket\b/i,                            'WebSockets'],
+  [/\boauth\b/i,                                'OAuth'],
+  [/\bjwt\b/i,                                  'JWT'],
+  // Tools
+  [/\bgit\b/i,                                  'Git'],
+  [/\blinux\b/i,                                'Linux'],
+  [/\bfigma\b/i,                                'Figma'],
+];
+
+function extractTechTags(title, description) {
+  const text = `${title} ${description}`;
+  const seen = new Set();
+  const tags = [];
+  for (const [pattern, name] of TECH_SKILL_PATTERNS) {
+    if (!seen.has(name) && pattern.test(text)) {
+      seen.add(name);
+      tags.push(name);
+    }
+  }
+  return tags.join(', ');
+}
+
 // ─── ATS detection ───────────────────────────────────────────────────────────
 
 function detectAts(url) {
@@ -44,20 +160,24 @@ async function scrapeGreenhouse(careerUrl, companyName) {
     `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`,
     { timeout: 12000 },
   );
-  return (data.jobs || []).map(job => ({
-    job_id:      `greenhouse-${job.id}`,
-    title:       job.title,
-    company:     companyName,
-    location:    job.location?.name || 'Not specified',
-    region:      classifyRegion(job.location?.name || ''),
-    url:         job.absolute_url,
-    description: stripHtml(job.content || '').slice(0, 500),
-    job_type:    'Full-time',
-    tags:        (job.departments || []).map(d => d.name).join(', '),
-  }));
+  return (data.jobs || []).map(job => {
+    const desc = stripHtml(job.content || '');
+    return {
+      job_id:      `greenhouse-${job.id}`,
+      title:       job.title,
+      company:     companyName,
+      location:    job.location?.name || 'Not specified',
+      region:      classifyRegion(job.location?.name || ''),
+      url:         job.absolute_url,
+      description: desc.slice(0, 2000),
+      job_type:    'Full-time',
+      tags:        extractTechTags(job.title, desc),
+    };
+  });
 }
 
 function mapLeverJob(job, companyName) {
+  const desc = job.descriptionPlain || '';
   return {
     job_id:      `lever-${job.id}`,
     title:       job.text,
@@ -65,9 +185,9 @@ function mapLeverJob(job, companyName) {
     location:    job.categories?.location || job.workplaceType || 'Not specified',
     region:      classifyRegion(job.categories?.location || ''),
     url:         job.hostedUrl,
-    description: (job.descriptionPlain || '').slice(0, 500),
+    description: desc.slice(0, 2000),
     job_type:    job.workplaceType || 'Full-time',
-    tags:        [job.categories?.team, job.categories?.department].filter(Boolean).join(', '),
+    tags:        extractTechTags(job.text, desc),
   };
 }
 
@@ -106,17 +226,20 @@ async function scrapeBambooHR(careerUrl, companyName) {
     `https://${subdomain}.bamboohr.com/careers/list`,
     { headers: { Accept: 'application/json' }, timeout: 12000 },
   );
-  return (data.result || []).map(job => ({
-    job_id:      `bamboohr-${subdomain}-${job.id}`,
-    title:       job.jobOpeningName,
-    company:     companyName,
-    location:    [job.locationCity, job.locationState].filter(Boolean).join(', ') || 'Not specified',
-    region:      classifyRegion([job.locationCity, job.locationState].join(' ')),
-    url:         `https://${subdomain}.bamboohr.com/careers/${job.id}`,
-    description: job.summary || '',
-    job_type:    job.employmentStatusLabel || 'Full-time',
-    tags:        job.department?.name || '',
-  }));
+  return (data.result || []).map(job => {
+    const desc = job.summary || '';
+    return {
+      job_id:      `bamboohr-${subdomain}-${job.id}`,
+      title:       job.jobOpeningName,
+      company:     companyName,
+      location:    [job.locationCity, job.locationState].filter(Boolean).join(', ') || 'Not specified',
+      region:      classifyRegion([job.locationCity, job.locationState].join(' ')),
+      url:         `https://${subdomain}.bamboohr.com/careers/${job.id}`,
+      description: desc,
+      job_type:    job.employmentStatusLabel || 'Full-time',
+      tags:        extractTechTags(job.jobOpeningName, desc),
+    };
+  });
 }
 
 async function scrapeSmartRecruiters(careerUrl, companyName) {
@@ -135,7 +258,7 @@ async function scrapeSmartRecruiters(careerUrl, companyName) {
     url:         `https://jobs.smartrecruiters.com/${slug}/${job.id}`,
     description: '',
     job_type:    job.typeOfEmployment?.label || 'Full-time',
-    tags:        job.department?.label || '',
+    tags:        extractTechTags(job.name, ''),
   }));
 }
 
@@ -149,24 +272,27 @@ async function scrapeAshby(careerUrl, companyName) {
       variables: { organizationHostedJobsPageName: slug },
       query: `query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {
         jobBoard: jobBoardWithTeams(organizationHostedJobsPageName: $organizationHostedJobsPageName) {
-          jobPostings { id title isRemote locationName employmentType { name } team { name } externalLink }
+          jobPostings { id title isRemote locationName descriptionHtml employmentType { name } team { name } externalLink }
         }
       }`,
     },
     { timeout: 12000 },
   );
   const postings = data?.data?.jobBoard?.jobPostings || [];
-  return postings.map(job => ({
-    job_id:      `ashby-${job.id}`,
-    title:       job.title,
-    company:     companyName,
-    location:    job.isRemote ? 'Remote' : (job.locationName || 'Not specified'),
-    region:      classifyRegion(job.isRemote ? 'Remote' : (job.locationName || '')),
-    url:         job.externalLink || `https://jobs.ashbyhq.com/${slug}/${job.id}`,
-    description: '',
-    job_type:    job.employmentType?.name || 'Full-time',
-    tags:        job.team?.name || '',
-  }));
+  return postings.map(job => {
+    const desc = stripHtml(job.descriptionHtml || '');
+    return {
+      job_id:      `ashby-${job.id}`,
+      title:       job.title,
+      company:     companyName,
+      location:    job.isRemote ? 'Remote' : (job.locationName || 'Not specified'),
+      region:      classifyRegion(job.isRemote ? 'Remote' : (job.locationName || '')),
+      url:         job.externalLink || `https://jobs.ashbyhq.com/${slug}/${job.id}`,
+      description: desc.slice(0, 2000),
+      job_type:    job.employmentType?.name || 'Full-time',
+      tags:        extractTechTags(job.title, desc),
+    };
+  });
 }
 
 // ─── Generic: HTTP fetch + AI extraction ─────────────────────────────────────
