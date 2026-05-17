@@ -40,9 +40,11 @@ router.get('/', async (req, res) => {
         END AS job_active
       FROM applications a
       LEFT JOIN jobhunter_jobs jh
-        ON a.source = 'JobHunters'
-        AND a.job_id ~ '^jh-[0-9]+$'
-        AND jh.id = CAST(SUBSTRING(a.job_id FROM 4) AS INTEGER)
+        ON jh.id = (
+          CASE WHEN a.source = 'JobHunters' AND a.job_id ~ '^jh-[0-9]+$'
+            THEN CAST(SUBSTRING(a.job_id FROM 4) AS INTEGER)
+          END
+        )
       WHERE a.user_id = $1
     `;
     const { rows } = status
