@@ -339,8 +339,9 @@ export default function JobsPage() {
   const userLevel = LEVEL_MAP[effectiveAnalysis?.experienceLevel ?? ''] ?? 0
 
   // Seniority detection patterns (shared by For You and Browse filters)
-  const INTERN_RE = /\b(intern(ship)?|trainee|apprentice|fresher|graduate\s+(?:program|scheme|trainee))\b/i
-  const JUNIOR_RE = /\b(junior|entry[- ]level|jr\.?\s+(?:dev|developer|engineer))\b/i
+  const INTERN_RE    = /\b(intern(ship)?|trainee|apprentice|fresher|graduate\s+(?:program|scheme|trainee))\b/i
+  const JUNIOR_RE    = /\b(junior|entry[- ]level|jr\.?\s+(?:dev|developer|engineer))\b/i
+  const MIDLEVEL_RE  = /\b(mid[- ]?level|intermediate)\b/i
 
   // Browse uses whatever the user TYPED in the search form, completely separate
   // from their profile. Profile years/level must NOT bleed into Browse filters.
@@ -358,11 +359,17 @@ export default function JobsPage() {
   const seniorityFilteredBrowse = browseLevelNum > 0
     ? rawBrowseJobs.filter(job => {
         const text = `${job.title ?? ''} ${(job.description ?? '').slice(0, 400)}`
-        if (browseLevelNum >= 2 && INTERN_RE.test(text))  return false
-        if (browseLevelNum >= 3 && JUNIOR_RE.test(text))  return false
-        if (browseCandidateYears !== undefined) {
-          const required = parseRequiredYears(job.description ?? '')
-          if (required !== null && required > browseCandidateYears + 2) return false
+        // Level keyword checks
+        if (browseLevelNum >= 2 && INTERN_RE.test(text))   return false
+        if (browseLevelNum >= 3 && JUNIOR_RE.test(text))   return false
+        // Junior: also exclude explicitly mid-level labeled jobs
+        if (browseLevelNum <= 1 && MIDLEVEL_RE.test(text)) return false
+        // Year check — Junior gets tighter tolerance (+1 not +2) because
+        // parseRequiredYears returns lower bound of ranges ("2-4 years" → 2)
+        const required = parseRequiredYears(job.description ?? '')
+        if (required !== null) {
+          const maxYears = browseLevelNum <= 1 ? 1 : browseCandidateYears + 2
+          if (required > maxYears) return false
         }
         return true
       })
@@ -383,13 +390,16 @@ export default function JobsPage() {
     if (!candidateYears && !userLevel) return all
     return all.filter(job => {
       const text = `${job.title ?? ''} ${(job.description ?? '').slice(0, 400)}`
-      // Too junior checks (only when we know the user's level)
-      if (userLevel >= 2 && INTERN_RE.test(text))  return false
-      if (userLevel >= 3 && JUNIOR_RE.test(text)) return false
-      // Too senior: required years too far above candidate
-      if (candidateYears) {
-        const required = parseRequiredYears(job.description ?? '')
-        if (required !== null && required > candidateYears + 2) return false
+      // Too junior for user's level
+      if (userLevel >= 2 && INTERN_RE.test(text))   return false
+      if (userLevel >= 3 && JUNIOR_RE.test(text))   return false
+      // For Junior profile: also exclude explicitly mid-level labeled jobs
+      if (userLevel <= 1 && userLevel > 0 && MIDLEVEL_RE.test(text)) return false
+      // Year-based check — tighter tolerance for juniors (same bug: ranges return lower bound)
+      const required = parseRequiredYears(job.description ?? '')
+      if (required !== null) {
+        const maxYears = userLevel <= 1 && userLevel > 0 ? 1 : candidateYears + 2
+        if (required > maxYears) return false
       }
       return true
     })

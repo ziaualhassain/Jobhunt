@@ -391,8 +391,15 @@ function rankJobs(jobs, filters) {
       if (filterLevel === null) return true;
       const titleLow = (job.title || '').toLowerCase();
       const headLow  = (job.description || '').slice(0, 300).toLowerCase();
-      // Junior (≤1): exclude jobs that explicitly signal Senior / Lead / Staff / Principal in the title
+      // Junior (≤1): exclude Senior/Lead/Staff/Principal titles
       if (filterLevel <= 1 && /\b(senior|sr\.|lead\s+(engineer|developer|dev)|staff\s+(engineer|developer)|principal|distinguished|fellow)\b/.test(titleLow)) return false;
+      // Junior (≤1): also exclude explicitly mid-level / intermediate titles
+      if (filterLevel <= 1 && /\b(mid[- ]?level|intermediate)\b/.test(titleLow)) return false;
+      // Junior (≤1): exclude jobs requiring 2+ years (parseRequiredYears returns lower bound of ranges)
+      if (filterLevel <= 1) {
+        const reqYears = parseRequiredYears(job.description || '');
+        if (reqYears !== null && reqYears >= 2) return false;
+      }
       // Mid-level+ (≥2): exclude explicit intern / trainee / fresher / apprentice
       if (filterLevel >= 2 && /\b(intern(ship)?|trainee|apprentice|fresher)\b/.test(titleLow + ' ' + headLow)) return false;
       return true;
