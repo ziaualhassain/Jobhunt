@@ -47,8 +47,8 @@ function ScoreCircle({ score, onClick }: { score: number; onClick: () => void })
   const r = 16
   const circ = 2 * Math.PI * r
   const offset = circ * (1 - score / 100)
-  const color = score >= 90 ? '#10b981' : score >= 75 ? '#eab308' : score >= 50 ? '#f97316' : '#64748b'
-  const textColor = score >= 90 ? 'text-emerald-400' : score >= 75 ? 'text-yellow-400' : score >= 50 ? 'text-orange-400' : 'text-slate-400'
+  const color = score >= 80 ? '#166534' : score >= 65 ? '#4ade80' : score >= 45 ? '#eab308' : '#64748b'
+  const textColor = score >= 80 ? 'text-green-800' : score >= 65 ? 'text-green-400' : score >= 45 ? 'text-yellow-400' : 'text-slate-400'
   return (
     <button
       type="button"
