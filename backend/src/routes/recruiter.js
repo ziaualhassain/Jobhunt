@@ -89,12 +89,32 @@ router.patch('/jobs/:id', async (req, res) => {
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
-    // When deactivating, reject all in-progress tracker entries except Offer
     if (isActive === false) {
+      // Save current status before overwriting so reactivation can restore it.
+      // Skip 'offer' (already accepted) and entries already rejected by the
+      // recruiter before this deactivation (pre_deactivation_status IS NOT NULL
+      // means a prior deactivation already saved the snapshot — don't overwrite it).
       await pool.query(
         `UPDATE applications
-         SET status = 'rejected', updated_at = NOW()
-         WHERE job_id = $1 AND status != 'offer'`,
+         SET pre_deactivation_status = status,
+             status     = 'rejected',
+             updated_at = NOW()
+         WHERE job_id = $1
+           AND status != 'offer'
+           AND pre_deactivation_status IS NULL`,
+        [`jh-${req.params.id}`]
+      );
+    } else if (isActive === true) {
+      // Restore previous statuses for applications that were bulk-rejected on
+      // deactivation. Applications genuinely rejected by the recruiter before
+      // deactivation will have pre_deactivation_status = NULL and are untouched.
+      await pool.query(
+        `UPDATE applications
+         SET status = pre_deactivation_status,
+             pre_deactivation_status = NULL,
+             updated_at = NOW()
+         WHERE job_id = $1
+           AND pre_deactivation_status IS NOT NULL`,
         [`jh-${req.params.id}`]
       );
     }

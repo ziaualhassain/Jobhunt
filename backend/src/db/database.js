@@ -243,6 +243,8 @@ async function initDb() {
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS skill_match_score INTEGER DEFAULT 0`,
   ];
   for (const sql of appCols) await pool.query(sql);
+  // Store pre-deactivation status so reactivation can restore it
+  await pool.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS pre_deactivation_status TEXT`);
   console.log('[DB] Schema ready');
 }
 
