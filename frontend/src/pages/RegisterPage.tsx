@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Cloud, Loader2, AlertCircle } from 'lucide-react'
+import { Cloud, Loader2, AlertCircle, UserCircle2, Briefcase } from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { registerUser } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
@@ -9,9 +9,12 @@ export default function RegisterPage() {
   const { login } = useAuth()
   const { loginWithRedirect, isLoading: auth0Loading } = useAuth0()
   const navigate = useNavigate()
+  const [role, setRole] = useState<'job_seeker' | 'recruiter'>('job_seeker')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [companyName, setCompanyName] = useState('')
+  const [companyEmail, setCompanyEmail] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -20,9 +23,13 @@ export default function RegisterPage() {
     setError('')
     setLoading(true)
     try {
-      const { token, user } = await registerUser(name, email, password)
+      const { token, user } = await registerUser(
+        name, email, password, role,
+        companyName || undefined,
+        companyEmail || undefined,
+      )
       login(token, user)
-      navigate('/')
+      navigate(user.role === 'recruiter' ? '/recruiter' : '/')
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } }
       setError(e.response?.data?.error ?? 'Registration failed')
@@ -41,6 +48,30 @@ export default function RegisterPage() {
 
         <div className="card p-6 space-y-4">
           <h1 className="text-lg font-semibold text-slate-100">Create account</h1>
+
+          {/* Role toggle */}
+          <div className="flex rounded-lg overflow-hidden border border-slate-700">
+            <button
+              type="button"
+              onClick={() => setRole('job_seeker')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+                role === 'job_seeker' ? 'bg-brand-500/20 text-brand-400' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <UserCircle2 size={14} />
+              Job Seeker
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole('recruiter')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium transition-colors ${
+                role === 'recruiter' ? 'bg-brand-500/20 text-brand-400' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              <Briefcase size={14} />
+              Recruiter
+            </button>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
@@ -69,6 +100,26 @@ export default function RegisterPage() {
               minLength={8}
               required
             />
+
+            {role === 'recruiter' && (
+              <>
+                <input
+                  type="text"
+                  className="input w-full"
+                  placeholder="Company name *"
+                  value={companyName}
+                  onChange={e => setCompanyName(e.target.value)}
+                  required
+                />
+                <input
+                  type="email"
+                  className="input w-full"
+                  placeholder="Company email (optional)"
+                  value={companyEmail}
+                  onChange={e => setCompanyEmail(e.target.value)}
+                />
+              </>
+            )}
 
             {error && (
               <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg p-3">

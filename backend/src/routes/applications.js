@@ -30,15 +30,26 @@ router.get('/stats/summary', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { status } = req.query;
-    const { rows } = status
-      ? await pool.query(
-          'SELECT * FROM applications WHERE user_id = $1 AND status = $2 ORDER BY updated_at DESC',
-          [req.user.id, status]
+    // For JobHunters entries, join to get live is_active so the tracker can
+    // show "Position Closed" when a recruiter deactivates the job.
+    const base = `
+      SELECT a.*,
+        CASE
+          WHEN a.source = 'JobHunters' THEN COALESCE(jh.is_active, false)
+          ELSE true
+        END AS job_active
+      FROM applications a
+      LEFT JOIN jobhunter_jobs jh
+        ON jh.id = (
+          CASE WHEN a.source = 'JobHunters' AND a.job_id ~ '^jh-[0-9]+$'
+            THEN CAST(SUBSTRING(a.job_id FROM 4) AS INTEGER)
+          END
         )
-      : await pool.query(
-          'SELECT * FROM applications WHERE user_id = $1 ORDER BY updated_at DESC',
-          [req.user.id]
-        );
+      WHERE a.user_id = $1
+    `;
+    const { rows } = status
+      ? await pool.query(base + ' AND a.status = $2 ORDER BY a.updated_at DESC', [req.user.id, status])
+      : await pool.query(base + ' ORDER BY a.updated_at DESC', [req.user.id]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

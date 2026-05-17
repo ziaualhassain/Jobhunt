@@ -226,6 +226,50 @@ async function initDb() {
       scraped_at   TIMESTAMPTZ DEFAULT NOW()
     );
   `);
+  // ── Recruiter feature ──────────────────────────────────────────────────────
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'job_seeker'`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_email TEXT`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS jobhunter_jobs (
+      id               SERIAL PRIMARY KEY,
+      recruiter_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title            TEXT NOT NULL,
+      description      TEXT NOT NULL DEFAULT '',
+      location         TEXT NOT NULL DEFAULT 'Remote',
+      job_type         TEXT NOT NULL DEFAULT 'Full-time',
+      experience_level TEXT NOT NULL DEFAULT 'Mid-level',
+      skills           TEXT NOT NULL DEFAULT '',
+      salary           TEXT,
+      is_active        BOOLEAN DEFAULT TRUE,
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS job_applications (
+      id           SERIAL PRIMARY KEY,
+      job_id       INTEGER NOT NULL REFERENCES jobhunter_jobs(id) ON DELETE CASCADE,
+      user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      cover_letter TEXT DEFAULT '',
+      status       TEXT NOT NULL DEFAULT 'Applied',
+      applied_at   TIMESTAMPTZ DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(job_id, user_id)
+    );
+  `);
+  const appCols = [
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS phone TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS linkedin_url TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS applicant_role TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS experience_years TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_salary TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS notice_period TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS applicant_skills TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS recruiter_notes TEXT DEFAULT ''`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS skill_match_score INTEGER DEFAULT 0`,
+  ];
+  for (const sql of appCols) await pool.query(sql);
+  await pool.query(`ALTER TABLE applications ADD COLUMN IF NOT EXISTS pre_deactivation_status TEXT`);
   console.log('[DB] Schema ready');
 }
 

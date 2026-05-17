@@ -541,4 +541,84 @@ router.post('/admin/enrich-titles', async (_req, res) => {
   enrichMissingTitles().catch(err => console.error('[TitleExtractor] Manual run failed:', err.message));
 });
 
+// ── POST /api/jobs/:jobId/apply  (job seeker applies to a JobHunters job) ─────
+const requireAuth = require('../middleware/auth');
+
+router.post('/:jobId/apply', requireAuth, async (req, res) => {
+  const raw = req.params.jobId.replace(/^jh-/, '');
+  const numericId = parseInt(raw, 10);
+  if (isNaN(numericId)) return res.status(400).json({ error: 'Invalid job id' });
+
+  const {
+    coverLetter = '',
+    phone = null,
+    linkedinUrl = null,
+    portfolioUrl = null,
+    currentRole = null,
+    experienceYears = null,
+    expectedSalary = null,
+    noticePeriod = null,
+    applicantSkills = '',
+  } = req.body;
+
+  try {
+    const { rows: job } = await pool.query(
+      `SELECT j.id, j.skills, j.title, j.salary, j.location, j.description, j.job_type,
+              COALESCE(u.company_name, '') AS company
+       FROM jobhunter_jobs j
+       JOIN users u ON u.id = j.recruiter_id
+       WHERE j.id = $1 AND j.is_active = TRUE`,
+      [numericId]
+    );
+    if (!job[0]) return res.status(404).json({ error: 'Job not found or inactive' });
+
+    const jobSkills = (job[0].skills || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const applicantSkillsLower = (applicantSkills || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const matched = jobSkills.filter(s => applicantSkillsLower.includes(s));
+    const skillMatchScore = jobSkills.length > 0 ? Math.round((matched.length / jobSkills.length) * 100) : 0;
+
+    const { rows } = await pool.query(
+      `INSERT INTO job_applications
+         (job_id, user_id, cover_letter, phone, linkedin_url, portfolio_url,
+          applicant_role, experience_years, expected_salary, notice_period,
+          applicant_skills, skill_match_score)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       ON CONFLICT (job_id, user_id) DO NOTHING
+       RETURNING *`,
+      [numericId, req.user.id, coverLetter, phone, linkedinUrl, portfolioUrl,
+       currentRole, experienceYears, expectedSalary, noticePeriod,
+       applicantSkills || null, skillMatchScore]
+    );
+    if (!rows[0]) return res.status(409).json({ error: 'Already applied' });
+
+    const jd = job[0];
+    await pool.query(
+      `INSERT INTO applications
+         (user_id, job_id, title, company, location, description, salary, job_type,
+          source, tags, status, applied_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'JobHunters',$9,'applied',CURRENT_DATE)
+       ON CONFLICT (user_id, job_id) DO NOTHING`,
+      [req.user.id, `jh-${numericId}`, jd.title, jd.company,
+       jd.location || 'Remote', jd.description, jd.salary, jd.job_type, jd.skills]
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/jobs/my-applications — list applied JobHunters job IDs (jh-{id} format)
+router.get('/my-applications', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT job_id FROM job_applications WHERE user_id = $1',
+      [req.user.id]
+    );
+    res.json(rows.map(r => `jh-${r.job_id}`));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

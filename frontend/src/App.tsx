@@ -11,6 +11,7 @@ import ResumeEnhancerPage from './pages/ResumeEnhancerPage'
 import InterviewCoachPage from './pages/InterviewCoachPage'
 import PrepTrackerPage from './pages/PrepTrackerPage'
 import CallbackPage from './pages/CallbackPage'
+import RecruiterDashboard from './pages/RecruiterDashboard'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
@@ -19,7 +20,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-const NAV_LINKS = [
+function RecruiterRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="flex items-center justify-center h-64 text-slate-500">Loading…</div>
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'recruiter') return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
+const SEEKER_NAV_LINKS = [
   { to: '/',                end: true,  icon: Briefcase,     label: 'Job Listings',              short: 'Jobs'    },
   { to: '/tracker',         end: false, icon: Kanban,        label: 'Interview Tracker',         short: 'Tracker' },
   { to: '/resume-enhancer', end: false, icon: FileSearch2,   label: 'Resume Creator & Enhancer', short: 'Resume'  },
@@ -27,8 +36,17 @@ const NAV_LINKS = [
   { to: '/prep-tracker',    end: false, icon: TrendingUp,    label: 'Preparation Tracker',       short: 'Prep'    },
 ]
 
-const BOTTOM_NAV = [
-  ...NAV_LINKS,
+const RECRUITER_NAV_LINKS = [
+  { to: '/recruiter', end: true, icon: Briefcase, label: 'Dashboard', short: 'Dashboard' },
+]
+
+const SEEKER_BOTTOM_NAV = [
+  ...SEEKER_NAV_LINKS,
+  { to: '/profile', end: false, icon: UserCircle2, label: 'Profile', short: 'Profile' },
+]
+
+const RECRUITER_BOTTOM_NAV = [
+  ...RECRUITER_NAV_LINKS,
   { to: '/profile', end: false, icon: UserCircle2, label: 'Profile', short: 'Profile' },
 ]
 
@@ -45,6 +63,10 @@ export default function App() {
   const { user } = useAuth()
   const { theme, toggleTheme } = useTheme()
 
+  const isRecruiter = user?.role === 'recruiter'
+  const NAV_LINKS = isRecruiter ? RECRUITER_NAV_LINKS : SEEKER_NAV_LINKS
+  const BOTTOM_NAV = isRecruiter ? RECRUITER_BOTTOM_NAV : SEEKER_BOTTOM_NAV
+
   return (
     <div className="min-h-screen flex flex-col">
       {user && (
@@ -52,7 +74,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto px-4 h-14 flex items-center">
 
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 flex-none group">
+            <Link to={isRecruiter ? '/recruiter' : '/'} className="flex items-center gap-2 flex-none group">
               <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-lg shadow-brand-500/20 group-hover:shadow-brand-500/40 transition-shadow">
                 <Cloud size={14} strokeWidth={2.5} className="text-white" />
               </div>
@@ -135,13 +157,18 @@ export default function App() {
           <Route path="/login"           element={<LoginPage />} />
           <Route path="/register"        element={<RegisterPage />} />
           <Route path="/callback"        element={<CallbackPage />} />
-          <Route path="/"                element={<ProtectedRoute><JobsPage /></ProtectedRoute>} />
+          <Route path="/recruiter"       element={<RecruiterRoute><RecruiterDashboard /></RecruiterRoute>} />
+          <Route path="/"                element={
+            <ProtectedRoute>
+              {isRecruiter ? <Navigate to="/recruiter" replace /> : <JobsPage />}
+            </ProtectedRoute>
+          } />
           <Route path="/tracker"         element={<ProtectedRoute><TrackerPage /></ProtectedRoute>} />
           <Route path="/profile"         element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
           <Route path="/resume-enhancer" element={<ProtectedRoute><ResumeEnhancerPage /></ProtectedRoute>} />
           <Route path="/interview-coach" element={<ProtectedRoute><InterviewCoachPage /></ProtectedRoute>} />
           <Route path="/prep-tracker"    element={<ProtectedRoute><PrepTrackerPage /></ProtectedRoute>} />
-          <Route path="*"                element={<Navigate to="/" replace />} />
+          <Route path="*"                element={<Navigate to={isRecruiter ? '/recruiter' : '/'} replace />} />
         </Routes>
       </main>
     </div>

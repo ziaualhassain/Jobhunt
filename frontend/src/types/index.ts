@@ -40,6 +40,7 @@ export interface Application {
   applied_date: string | null;
   created_at: string;
   updated_at: string;
+  job_active?: boolean;
 }
 
 export interface SearchFilters {
