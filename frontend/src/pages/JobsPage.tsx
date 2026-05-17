@@ -333,35 +333,47 @@ export default function JobsPage() {
   const applySourceFilter = (jobs: Job[]) =>
     selectedSources.length === 0 ? jobs : jobs.filter(j => selectedSources.includes(j.source))
 
-  // When browsing with resume-based search, apply the same seniority filter
-  // as For You so junior users don't see 500 senior/lead jobs.
+  // Candidate's years — prefer live resume analysis, fall back to profile setting
+  const candidateYears = effectiveAnalysis?.yearsOfExperience ?? profileYears ?? 0
+  // For You seniority level — always from profile / resume analysis
+  const userLevel = LEVEL_MAP[effectiveAnalysis?.experienceLevel ?? ''] ?? 0
+
+  // Seniority detection patterns (shared by For You and Browse filters)
+  const INTERN_RE = /\b(intern(ship)?|trainee|apprentice|fresher|graduate\s+(?:program|scheme|trainee))\b/i
+  const JUNIOR_RE = /\b(junior|entry[- ]level|jr\.?\s+(?:dev|developer|engineer))\b/i
+
+  // Browse uses whatever the user TYPED in the search form, completely separate
+  // from their profile. Profile years/level must NOT bleed into Browse filters.
+  const LEVEL_TO_MIN_YEARS: Record<number, number> = { 1: 0, 2: 2, 3: 5, 4: 8, 5: 10, 6: 14 }
+  const browseSelectedLevel = filters?.experienceLevel ?? ''
+  const browseLevelNum      = LEVEL_MAP[browseSelectedLevel] ?? 0
+  // Resume-based search knows actual years; manual search estimates from level
+  const browseCandidateYears = resumeFilters
+    ? (resumeAnalysis?.yearsOfExperience ?? 0)
+    : (LEVEL_TO_MIN_YEARS[browseLevelNum] ?? 0)
+
   const rawBrowseJobs = browseData?.jobs ?? []
-  const seniorityFilteredBrowse = resumeFilters
+  // Apply seniority filter whenever an experience level is selected in Browse
+  // (either manually or via resume upload). Does NOT use profile data.
+  const seniorityFilteredBrowse = browseLevelNum > 0
     ? rawBrowseJobs.filter(job => {
         const text = `${job.title ?? ''} ${(job.description ?? '').slice(0, 400)}`
-        if (userLevel >= 2 && INTERN_RE.test(text))  return false
-        if (userLevel >= 3 && JUNIOR_RE.test(text))  return false
-        if (candidateYears) {
+        if (browseLevelNum >= 2 && INTERN_RE.test(text))  return false
+        if (browseLevelNum >= 3 && JUNIOR_RE.test(text))  return false
+        if (browseCandidateYears !== undefined) {
           const required = parseRequiredYears(job.description ?? '')
-          if (required !== null && required > candidateYears + 2) return false
+          if (required !== null && required > browseCandidateYears + 2) return false
         }
         return true
       })
     : rawBrowseJobs
+
   const browseJobs = applySourceFilter([...seniorityFilteredBrowse])
   if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
   else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
   else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))
   else if (sort === 'match' || (PERCENTAGE_ENABLE && effectiveAnalysis && sort === 'default'))
     browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
-
-  // Candidate's years — prefer live resume analysis, fall back to profile setting
-  const candidateYears = effectiveAnalysis?.yearsOfExperience ?? profileYears ?? 0
-  const userLevel      = LEVEL_MAP[effectiveAnalysis?.experienceLevel ?? ''] ?? 0
-
-  // Intern / junior detection patterns
-  const INTERN_RE  = /\b(intern(ship)?|trainee|apprentice|fresher|graduate\s+(?:program|scheme|trainee))\b/i
-  const JUNIOR_RE  = /\b(junior|entry[- ]level|jr\.?\s+(?:dev|developer|engineer))\b/i
 
   // For You: filter out jobs that are a poor seniority fit.
   // — Too senior: stated requirement exceeds candidate's years by more than 2
