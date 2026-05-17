@@ -44,17 +44,52 @@ function wordBoundaryTest(text: string, term: string): boolean {
   }
 }
 
+// Strip trailing location/mode noise from extracted titles
+function cleanExtracted(s: string): string {
+  return s
+    .replace(/\s*\((?:remote|on.?site|hybrid|work from|anywhere|full.?time|part.?time|contract)[^)]*\)/gi, '')
+    .replace(/\s*[-–|]\s*$/, '')
+    .trim()
+}
+
 export function extractTitleFromDescription(desc: string): string | null {
   if (!desc) return null
-  let m = desc.match(/\*\*Job Description\*\*\s*-\s*(.+?)\s*-\s*\*\*/i)
-  if (m) return m[1].trim()
-  m = desc.match(/\*{1,2}Job\s+Description\s*:\s*(.+?)\*{1,2}/i)
-  if (m) return m[1].trim()
-  m = desc.match(/Job\s+Description\s*[-:]\s*([A-Z][^\n\-*]{5,80}?)(?:\s*[-*\n]|$)/i)
-  if (m) return m[1].trim()
-  m = desc.match(/^\*\*([A-Z][^*\n]{5,60})\*\*/)
-  if (m) return m[1].trim()
-  return null
+
+  const try1 = (re: RegExp): string | null => {
+    const m = desc.match(re)
+    if (!m) return null
+    const t = cleanExtracted(m[1])
+    return t.length >= 4 && t.length <= 100 ? t : null
+  }
+
+  // Ranked by reliability — first non-null wins
+  return (
+    // **Job Title: Foo** or **Job Title:** Foo
+    try1(/\*\*Job\s+Title\s*:\s*([^*\n]{4,100}?)\*\*/i) ??
+    try1(/\*{0,2}Job\s+Title\s*:\s*\*{0,2}\s*([^\n*]{4,100}?)(?:\n|$)/i) ??
+    // **Role** : Foo  or  **Role:** Foo
+    try1(/\*\*Role\*\*\s*:\s*([^*\n(]{4,80})/i) ??
+    try1(/\bRole\s*:\s*\*?\s*([A-Z][^\n*(]{4,80})/i) ??
+    // **Position:** Foo
+    try1(/\*{0,2}Position\*{0,2}\s*:\s*([A-Z][^\n*(]{4,80})/i) ??
+    // **Title:** Foo or Title: Foo
+    try1(/\*{0,2}Title\s*:\s*\*{0,2}\s*([A-Z][^\n*(]{4,80})/i) ??
+    // **Job Description** - Foo - **...**
+    try1(/\*\*Job Description\*\*\s*-\s*(.+?)\s*-\s*\*\*/i) ??
+    // *Job Description: Foo**
+    try1(/\*{1,2}Job\s+Description\s*:\s*(.+?)\*{1,2}/i) ??
+    // Plain "Job Description - Foo" or "Job Description: Foo"
+    try1(/Job\s+Description\s*[-:]\s*([A-Z][^\n\-*]{4,80}?)(?:\s*[-*\n]|$)/i) ??
+    // Natural language: "looking for a Senior DevOps Engineer to join"
+    try1(/\blooking\s+for\s+(?:a|an)\s+((?:[A-Z][a-zA-Z]+\s*){2,6}?)(?:\s+to\b|\s+who\b|\s+with\b)/i) ??
+    // "We're hiring / seeking a Title"
+    try1(/(?:we'?re?|we are)\s+(?:hiring|seeking|recruiting)\s+(?:a|an)\s+((?:[A-Z][a-zA-Z]+\s*){2,6}?)(?:\s+to\b|\s+who\b|\s+for\b|\n|$)/i) ??
+    // Markdown heading: ## Title or # Title
+    try1(/^#{1,3}\s+([A-Z][^\n#]{4,80})$/m) ??
+    // First bold block at start that looks like a title (no verbs/punctuation)
+    try1(/^\*\*([A-Z][^*\n]{4,60})\*\*/) ??
+    null
+  )
 }
 
 export function parseRequiredYears(text: string): number | null {
