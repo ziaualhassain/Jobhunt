@@ -44,11 +44,15 @@ function wordBoundaryTest(text: string, term: string): boolean {
   }
 }
 
-// Strip trailing location/mode noise from extracted titles
+// Filler adjectives that precede a real title in natural-language descriptions
+const FILLER_PREFIX = /^(?:(?:highly|very|extremely|well|truly)\s+)?(?:skilled|experienced|talented|passionate|dynamic|proven|dedicated|motivated|results.?driven|detail.?oriented|hard.?working)\s+/i
+
+// Strip trailing location/mode noise and leading filler adjectives
 function cleanExtracted(s: string): string {
   return s
     .replace(/\s*\((?:remote|on.?site|hybrid|work from|anywhere|full.?time|part.?time|contract)[^)]*\)/gi, '')
-    .replace(/\s*[-–|]\s*$/, '')
+    .replace(FILLER_PREFIX, '')
+    .replace(/\s*[-–|,]\s*$/, '')
     .trim()
 }
 
@@ -64,15 +68,16 @@ export function extractTitleFromDescription(desc: string): string | null {
 
   // Ranked by reliability — first non-null wins
   return (
-    // **Job Title: Foo** or **Job Title:** Foo
+    // **Job Title: Foo**  (inline bold)
     try1(/\*\*Job\s+Title\s*:\s*([^*\n]{4,100}?)\*\*/i) ??
+    // Job Title: Foo  (plain or partial bold)
     try1(/\*{0,2}Job\s+Title\s*:\s*\*{0,2}\s*([^\n*]{4,100}?)(?:\n|$)/i) ??
-    // **Role** : Foo  or  **Role:** Foo
+    // **Role** : Foo  or  **Role**: Foo
     try1(/\*\*Role\*\*\s*:\s*([^*\n(]{4,80})/i) ??
     try1(/\bRole\s*:\s*\*?\s*([A-Z][^\n*(]{4,80})/i) ??
     // **Position:** Foo
     try1(/\*{0,2}Position\*{0,2}\s*:\s*([A-Z][^\n*(]{4,80})/i) ??
-    // **Title:** Foo or Title: Foo
+    // **Title:** Foo  or  Title: Foo
     try1(/\*{0,2}Title\s*:\s*\*{0,2}\s*([A-Z][^\n*(]{4,80})/i) ??
     // **Job Description** - Foo - **...**
     try1(/\*\*Job Description\*\*\s*-\s*(.+?)\s*-\s*\*\*/i) ??
@@ -80,13 +85,17 @@ export function extractTitleFromDescription(desc: string): string | null {
     try1(/\*{1,2}Job\s+Description\s*:\s*(.+?)\*{1,2}/i) ??
     // Plain "Job Description - Foo" or "Job Description: Foo"
     try1(/Job\s+Description\s*[-:]\s*([A-Z][^\n\-*]{4,80}?)(?:\s*[-*\n]|$)/i) ??
-    // Natural language: "looking for a Senior DevOps Engineer to join"
-    try1(/\blooking\s+for\s+(?:a|an)\s+((?:[A-Z][a-zA-Z]+\s*){2,6}?)(?:\s+to\b|\s+who\b|\s+with\b)/i) ??
-    // "We're hiring / seeking a Title"
-    try1(/(?:we'?re?|we are)\s+(?:hiring|seeking|recruiting)\s+(?:a|an)\s+((?:[A-Z][a-zA-Z]+\s*){2,6}?)(?:\s+to\b|\s+who\b|\s+for\b|\n|$)/i) ??
-    // Markdown heading: ## Title or # Title
+    // Title at start followed by metadata key (Location:, Experience:, etc.)
+    try1(/^([A-Z][a-zA-Z]+(?:[ \t]+[A-Z][a-zA-Z()\/-]+){0,4})[ \t]*(?=[ \t]*\n|[ \t]*[-–]|[ \t]+(?:Location|Experience|Salary|CTC|Type|Notice|Mode)\s*:)/m) ??
+    // Natural language: "looking for a [adj] X to/who/with"
+    try1(/\blooking\s+for\s+(?:a|an)\s+([\w][^\n]{4,80}?)(?=\s+(?:to\b|who\b|with\b|that\b))/i) ??
+    // "seeking a [adj] X to/who/with/for"
+    try1(/\bseeking\s+(?:a|an)\s+([\w][^\n]{4,80}?)(?=\s+(?:to\b|who\b|with\b|for\b))/i) ??
+    // "we're/we are hiring/recruiting a X"
+    try1(/(?:we'?re?|we are)\s+(?:hiring|seeking|recruiting)\s+(?:a|an)\s+([\w][^\n]{4,80}?)(?=\s+(?:to\b|who\b|for\b)|\n|$)/i) ??
+    // Markdown heading: ## Foo
     try1(/^#{1,3}\s+([A-Z][^\n#]{4,80})$/m) ??
-    // First bold block at start that looks like a title (no verbs/punctuation)
+    // First bold block at description start
     try1(/^\*\*([A-Z][^*\n]{4,60})\*\*/) ??
     null
   )
