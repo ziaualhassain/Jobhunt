@@ -12,9 +12,11 @@ const { classifyRegion } = require('./jobSources');
 
 function stripHtml(html = '') {
   return html
-    .replace(/<[^>]+>/g, ' ')
+    // Decode entities FIRST so entity-encoded tags (e.g. &lt;h2&gt;) become real tags
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    // Now strip all tags (including the ones that were entity-encoded above)
+    .replace(/<[^>]+>/g, ' ')
     .replace(/\s+/g, ' ').trim();
 }
 
