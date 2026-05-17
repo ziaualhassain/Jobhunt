@@ -237,6 +237,17 @@ export async function deepScoreJob(analysis: ResumeAnalysis, job: Job): Promise<
 
 // ── Applications ──────────────────────────────────────────────────────────────
 
+export interface BehavioralSignals {
+  titles: string[]
+  skills: string[]
+  count: number
+}
+
+export async function getBehavioralSignals(): Promise<BehavioralSignals> {
+  const res = await api.get('/applications/signals');
+  return res.data;
+}
+
 export async function getApplications(status?: ApplicationStatus): Promise<Application[]> {
   const params = status ? { status } : {};
   const res = await api.get('/applications', { params });

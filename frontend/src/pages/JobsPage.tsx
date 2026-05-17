@@ -6,8 +6,8 @@ import SearchForm, { REGIONS } from '../components/SearchForm'
 import { PERCENTAGE_ENABLE } from '../lib/config'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
-import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
-import type { ResumeAnalysis } from '../lib/api'
+import { searchJobs, saveApplication, getApplications, getProfile, updateProfile, getBehavioralSignals } from '../lib/api'
+import type { ResumeAnalysis, BehavioralSignals } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
 import { scoreJob, parseRequiredYears } from '../lib/jobScorer'
 import type { FitScore } from '../lib/jobScorer'
@@ -95,6 +95,11 @@ export default function JobsPage() {
 
   const { data: profile } = useQuery({ queryKey: ['profile'], queryFn: getProfile })
   const { data: applications } = useQuery({ queryKey: ['applications'], queryFn: () => getApplications() })
+  const { data: behavioralSignals } = useQuery<BehavioralSignals>({
+    queryKey: ['behavioral-signals'],
+    queryFn: getBehavioralSignals,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const savedIds = new Set((applications ?? []).map(a => a.job_id))
 
@@ -134,6 +139,9 @@ export default function JobsPage() {
   const profileInterests = profile?.preferences?.interests ?? []
   const profileKeywords  = profile?.preferences?.keywords ?? []
   const profileJobTitles = profile?.preferences?.jobTitles ?? []
+  const behavioralTitles = behavioralSignals?.titles ?? []
+  const behavioralSkills = behavioralSignals?.skills ?? []
+  const hasBehavioralData = (behavioralSignals?.count ?? 0) >= 2
   const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0 || profileJobTitles.length > 0
 
   // Map years of experience → seniority label when user hasn't picked one explicitly
@@ -193,14 +201,22 @@ export default function JobsPage() {
   const profileCity   = profile ? extractCity(rawProfileLocation) : ''
   const profileRemote = profile?.preferences?.remote ?? true
 
+  // Deduplicate while preserving order — profile signals take priority
+  function mergeUnique(...arrays: string[][]): string[] {
+    return [...new Set(arrays.flat())]
+  }
+
+  const allJobTitles    = mergeUnique(profileJobTitles, hasBehavioralData ? behavioralTitles : [])
+  const allKeywords     = mergeUnique(profileKeywords, hasBehavioralData ? behavioralSkills : [])
+
   const curatedFilters: Partial<SearchFilters> = {
     tags:            profileInterests,
-    // job titles added as keywords so the backend fetches roles matching those titles
-    keywords:        [...profileKeywords, ...profileJobTitles],
+    // job titles + behavioral titles added as keywords for backend fetch
+    keywords:        mergeUnique(profileKeywords, profileJobTitles, hasBehavioralData ? behavioralSkills : []),
     experienceLevel: effectiveExperienceLevel,
     jobType:         profile?.preferences?.jobType ?? '',
-    location:        profileCity,   // city-level filter (e.g. "Hyderabad")
-    region:          profileRegion, // country-level filter (e.g. "India")
+    location:        profileCity,
+    region:          profileRegion,
     remote:          profileRemote,
   }
 
@@ -209,14 +225,13 @@ export default function JobsPage() {
   const ROLE_TAGS = new Set(['Frontend', 'Backend', 'Full Stack', 'DevOps', 'Mobile', 'Data Engineer', 'ML / AI', 'QA', 'Platform Engineer', 'SRE'])
   const CLOUD_TAGS = new Set(['AWS', 'Azure', 'GCP'])
   const profileAsAnalysis: ResumeAnalysis | null = profile && hasProfileData ? {
-    skills: [...profileInterests, ...profileKeywords],
+    skills: mergeUnique(profileInterests, allKeywords),
     experienceLevel: effectiveExperienceLevel || 'Mid-level',
     yearsOfExperience: profileYears ?? 0,
-    // Prefer explicit job titles the user set; fall back to role-type interest tags
-    jobTitles: profileJobTitles.length > 0
-      ? profileJobTitles
+    jobTitles: allJobTitles.length > 0
+      ? allJobTitles
       : profileInterests.filter(i => ROLE_TAGS.has(i)),
-    searchKeywords: [...profileKeywords, ...profileJobTitles],
+    searchKeywords: mergeUnique(allKeywords, allJobTitles),
     cloudPlatforms: profileInterests.filter(i => CLOUD_TAGS.has(i)),
     summary: '',
   } : null
@@ -287,11 +302,18 @@ export default function JobsPage() {
   const effectiveAnalysis: typeof profileAsAnalysis = (() => {
     const base = resumeAnalysis ?? profileAsAnalysis
     if (!base) return null
-    if (!effectiveExperienceLevel && profileYears == null) return base
-    return {
+    const withLevel = (!effectiveExperienceLevel && profileYears == null) ? base : {
       ...base,
       experienceLevel: effectiveExperienceLevel || base.experienceLevel,
       yearsOfExperience: profileYears ?? base.yearsOfExperience,
+    }
+    // Layer behavioral signals on top — augment skills/titles without replacing
+    if (!hasBehavioralData) return withLevel
+    return {
+      ...withLevel,
+      skills:         mergeUnique(withLevel.skills, behavioralSkills),
+      searchKeywords: mergeUnique(withLevel.searchKeywords, behavioralSkills),
+      jobTitles:      mergeUnique(withLevel.jobTitles, behavioralTitles),
     }
   })()
   const fitScores = useMemo<Map<string, FitScore>>(() => {
@@ -485,6 +507,17 @@ export default function JobsPage() {
                   )}
                 </div>
               </div>
+
+              {/* Behavioral signal hint */}
+              {hasBehavioralData && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-slate-800/60 border border-slate-700/60 rounded-lg text-[11px] text-slate-400">
+                  <span className="text-emerald-400">↑</span>
+                  Ranking tuned from {behavioralSignals!.count} saved &amp; applied job{behavioralSignals!.count !== 1 ? 's' : ''}
+                  {behavioralTitles.length > 0 && (
+                    <span className="text-slate-600">· {behavioralTitles.slice(0, 2).join(', ')}{behavioralTitles.length > 2 ? ` +${behavioralTitles.length - 2} more` : ''}</span>
+                  )}
+                </div>
+              )}
 
               {curatedLoading && <SkeletonGrid />}
 
