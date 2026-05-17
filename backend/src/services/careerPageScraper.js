@@ -150,15 +150,26 @@ function detectAts(url) {
   return 'generic';
 }
 
+// Run async tasks with at most `concurrency` in-flight at once
+async function batchAsync(items, fn, concurrency = 6) {
+  const results = [];
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = await Promise.all(items.slice(i, i + concurrency).map(fn));
+    results.push(...chunk);
+  }
+  return results;
+}
+
 // ─── ATS-specific scrapers ────────────────────────────────────────────────────
 
 async function scrapeGreenhouse(careerUrl, companyName) {
   // Extract board slug from URL: boards.greenhouse.io/SLUG or COMPANY.greenhouse.io
   const slug = careerUrl.match(/greenhouse\.io\/([^\/\?#]+)/)?.[1];
   if (!slug) return [];
+  // ?content=true includes the full job description HTML in the list response
   const { data } = await axios.get(
-    `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs`,
-    { timeout: 12000 },
+    `https://boards-api.greenhouse.io/v1/boards/${slug}/jobs?content=true`,
+    { timeout: 30000 },
   );
   return (data.jobs || []).map(job => {
     const desc = stripHtml(job.content || '');
@@ -215,7 +226,20 @@ async function scrapeLever(careerUrl, companyName) {
   if (!match) return [];
   const nextData = JSON.parse(match[1]);
   const postings = nextData?.props?.pageProps?.postings ?? nextData?.props?.pageProps?.data?.postings ?? [];
-  return postings.map(job => mapLeverJob(job, companyName));
+
+  // Fetch individual posting pages to get descriptionPlain (6 at a time)
+  return batchAsync(postings, async job => {
+    if (!job.descriptionPlain) {
+      try {
+        const { data: detail } = await axios.get(
+          `https://api.lever.co/v0/postings/${slug}/${job.id}`,
+          { timeout: 8000 },
+        );
+        job = { ...job, descriptionPlain: detail?.descriptionPlain || '' };
+      } catch { /* use title-only tags */ }
+    }
+    return mapLeverJob(job, companyName);
+  });
 }
 
 async function scrapeBambooHR(careerUrl, companyName) {
@@ -249,17 +273,33 @@ async function scrapeSmartRecruiters(careerUrl, companyName) {
     `https://api.smartrecruiters.com/v1/companies/${slug}/postings`,
     { timeout: 12000 },
   );
-  return (data.content || []).map(job => ({
-    job_id:      `sr-${job.id}`,
-    title:       job.name,
-    company:     companyName,
-    location:    [job.location?.city, job.location?.country].filter(Boolean).join(', ') || 'Not specified',
-    region:      classifyRegion([job.location?.city, job.location?.country].join(' ')),
-    url:         `https://jobs.smartrecruiters.com/${slug}/${job.id}`,
-    description: '',
-    job_type:    job.typeOfEmployment?.label || 'Full-time',
-    tags:        extractTechTags(job.name, ''),
-  }));
+  const listings = data.content || [];
+
+  // Fetch individual job descriptions concurrently (6 at a time)
+  return batchAsync(listings, async job => {
+    let desc = '';
+    try {
+      const { data: detail } = await axios.get(
+        `https://api.smartrecruiters.com/v1/companies/${slug}/postings/${job.id}`,
+        { timeout: 10000 },
+      );
+      desc = stripHtml(
+        (detail.jobAd?.sections?.jobDescription?.text || '') +
+        ' ' + (detail.jobAd?.sections?.qualifications?.text || '')
+      );
+    } catch { /* skip — title-only tags as fallback */ }
+    return {
+      job_id:      `sr-${job.id}`,
+      title:       job.name,
+      company:     companyName,
+      location:    [job.location?.city, job.location?.country].filter(Boolean).join(', ') || 'Not specified',
+      region:      classifyRegion([job.location?.city, job.location?.country].join(' ')),
+      url:         `https://jobs.smartrecruiters.com/${slug}/${job.id}`,
+      description: desc.slice(0, 2000),
+      job_type:    job.typeOfEmployment?.label || 'Full-time',
+      tags:        extractTechTags(job.name, desc),
+    };
+  });
 }
 
 async function scrapeAshby(careerUrl, companyName) {
@@ -279,8 +319,27 @@ async function scrapeAshby(careerUrl, companyName) {
     { timeout: 12000 },
   );
   const postings = data?.data?.jobBoard?.jobPostings || [];
-  return postings.map(job => {
-    const desc = stripHtml(job.descriptionHtml || '');
+
+  return batchAsync(postings, async job => {
+    let descHtml = job.descriptionHtml || '';
+    // If the list didn't include description, fetch the individual job page
+    if (!descHtml) {
+      try {
+        const { data: detail } = await axios.post(
+          'https://jobs.ashbyhq.com/api/non-user-graphql',
+          {
+            operationName: 'ApiJobPosting',
+            variables: { jobPostingId: job.id },
+            query: `query ApiJobPosting($jobPostingId: String!) {
+              jobPosting(jobPostingId: $jobPostingId) { descriptionHtml }
+            }`,
+          },
+          { timeout: 8000 },
+        );
+        descHtml = detail?.data?.jobPosting?.descriptionHtml || '';
+      } catch { /* use title-only tags */ }
+    }
+    const desc = stripHtml(descHtml);
     return {
       job_id:      `ashby-${job.id}`,
       title:       job.title,
