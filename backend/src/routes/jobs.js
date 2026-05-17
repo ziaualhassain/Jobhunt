@@ -235,6 +235,53 @@ async function getDefaultCareerJobs(filters) {
   }
 }
 
+// ── Job ranking ──────────────────────────────────────────────────────────────
+// Scores every job and sorts across all sources so results are interleaved
+// by relevance instead of grouped by source.
+//
+// Signal weights:
+//   Title match   +40  (most intent-bearing field)
+//   Tag match     +25  (curated skills — high signal)
+//   Desc match    +5   (broad text — lower weight)
+//   Tag count     +4 each, capped at 40  (richer data = more useful)
+//   Has salary    +15
+//   Has desc      +10
+//
+// When no search query is present (browsing) the score is purely based on
+// data completeness so richer jobs still surface ahead of stub entries.
+function rankJobs(jobs, filters) {
+  const { keywords = [], tags = [] } = filters;
+  const signals = [...new Set([...keywords, ...tags])]
+    .filter(Boolean)
+    .flatMap(s =>
+      s.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w))
+    );
+
+  return jobs
+    .map(job => {
+      let score = 0;
+      const title   = (job.title       || '').toLowerCase();
+      const jobTags = (job.tags        || '').toLowerCase();
+      const desc    = (job.description || '').toLowerCase();
+
+      for (const signal of signals) {
+        if (title.includes(signal))   score += 40;
+        if (jobTags.includes(signal)) score += 25;
+        if (desc.includes(signal))    score += 5;
+      }
+
+      // Completeness bonuses (source-neutral)
+      const tagCount = job.tags ? job.tags.split(',').filter(t => t.trim()).length : 0;
+      score += Math.min(tagCount * 4, 40);
+      if (job.salary)                          score += 15;
+      if (desc.length > 100)                   score += 10;
+
+      return { ...job, _score: score };
+    })
+    .sort((a, b) => b._score - a._score)
+    .map(({ _score, ...job }) => job);
+}
+
 // GET /api/jobs/search
 router.get('/search', optionalAuth, async (req, res) => {
   try {
@@ -264,15 +311,18 @@ router.get('/search', optionalAuth, async (req, res) => {
       req.user ? getCareerPageJobs(req.user.id, filters) : getDefaultCareerJobs(filters),
     ]);
 
-    // Merge and deduplicate by job_id
+    // Deduplicate by job_id across all sources
     const seen = new Set();
-    const jobs = [];
+    const merged = [];
     for (const job of [...liveJobs, ...theirStackJobs, ...careerJobs]) {
       if (!seen.has(job.job_id)) {
         seen.add(job.job_id);
-        jobs.push(job);
+        merged.push(job);
       }
     }
+
+    // Rank by relevance + completeness so results interleave across sources
+    const jobs = rankJobs(merged, filters);
 
     res.json({ jobs, total: jobs.length });
   } catch (err) {
