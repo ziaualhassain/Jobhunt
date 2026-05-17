@@ -236,13 +236,26 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
               <div className="rounded-lg bg-slate-900/50 border border-slate-700/40 px-2.5 py-2 space-y-1.5">
                 <p className="text-[10px] text-slate-500 font-medium mb-2">How this score is calculated</p>
                 <ScoreBar value={aiScore ? aiScore.score : fitScore.skills} label="Skills" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Skill overlap with your resume keywords · weight 40%</p>
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">
+                  Skill overlap with your profile keywords · {fitScore.roleActive ? '40%' : '50%'}
+                </p>
                 <ScoreBar value={fitScore.level} label="Level" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Seniority match + years-of-experience fit · weight 25%</p>
-                <ScoreBar value={fitScore.role}  label="Role" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Job title alignment with your target roles · weight 20%</p>
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">
+                  Seniority match + years-of-experience fit · {fitScore.roleActive ? '25%' : '35%'}
+                </p>
+                {fitScore.roleActive && (
+                  <>
+                    <ScoreBar value={fitScore.role} label="Role" />
+                    <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Job title alignment with your target roles · 20%</p>
+                  </>
+                )}
                 <ScoreBar value={fitScore.location ?? 60} label="Location" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Region preference match (remote / country) · weight 15%</p>
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Region preference match (remote / country) · 15%</p>
+                {!fitScore.roleActive && (
+                  <p className="text-[9px] text-slate-500 italic mt-1">
+                    Role dimension inactive — add target job titles via resume upload to enable it
+                  </p>
+                )}
               </div>
 
               {/* Pros — matched skills */}

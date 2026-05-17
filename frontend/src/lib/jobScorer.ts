@@ -5,11 +5,12 @@ export interface FitScore {
   overall: number        // 0–100 weighted total
   skills: number         // skill overlap %
   level: number          // experience level proximity %
-  role: number           // job title match %
+  role: number           // job title match % (0 when no target titles set)
   location: number       // region/remote match %
+  roleActive: boolean    // false when jobTitles was empty — role excluded from formula
   matchedSkills: string[]
   missingSignals: string[]
-  reasons: string[]      // human-readable why this job ranked here
+  reasons: string[]
 }
 
 const LEVEL_MAP: Record<string, number> = {
@@ -92,8 +93,11 @@ function yearsGapPenalty(resumeYears: number | undefined, description: string): 
   return Math.min(40, gap * 12)
 }
 
-// Weights: Skills 40% | Level 25% | Role 20% | Location 15%
-const W = { skills: 0.40, level: 0.25, role: 0.20, location: 0.15 }
+// Base weights when job titles are available for role matching
+const W_WITH_ROLE    = { skills: 0.40, level: 0.25, role: 0.20, location: 0.15 }
+// When no job titles set (profile-only, no resume), Role is meaningless —
+// redistribute its 20% evenly to Skills and Level
+const W_WITHOUT_ROLE = { skills: 0.50, level: 0.35, role: 0,    location: 0.15 }
 
 export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: string): FitScore {
   const desc = job.description ?? ''
@@ -124,20 +128,20 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
   const penalty    = yearsGapPenalty(analysis.yearsOfExperience, desc)
   const levelScore = Math.max(0, baseLevelScore - penalty)
 
-  // ── 3. Role / title match (20%) ───────────────────────────────────────────
+  // ── 3. Role / title match (only when job titles are available) ───────────
   const jobTitleLower = job.title.toLowerCase()
   const roleWords = analysis.jobTitles
     .flatMap(t => t.toLowerCase().split(/\s+/))
     .filter(w => w.length > 3)
+  const roleActive = roleWords.length > 0
 
-  // Exact phrase match in title is the strongest role signal
   const exactTitleMatch = analysis.jobTitles.some(t =>
     job.title.toLowerCase().includes(t.toLowerCase())
   )
   const roleHits = roleWords.filter(w => wordBoundaryTest(jobTitleLower, w)).length
-  const rawRoleScore = roleWords.length > 0
+  const rawRoleScore = roleActive
     ? Math.round((roleHits / roleWords.length) * 200)
-    : 40
+    : 0
   const roleScore = Math.min(100, rawRoleScore + (exactTitleMatch ? 20 : 0))
 
   // ── 4. Location match (15%) ───────────────────────────────────────────────
@@ -179,7 +183,7 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
     reasons.push(`${matchedSkills.length} skill${matchedSkills.length > 1 ? 's' : ''} matched`)
   else
     reasons.push('No skill overlap detected')
-  if (exactTitleMatch)
+  if (roleActive && exactTitleMatch)
     reasons.push('Title matches your target role')
   if (levelScore >= 80)
     reasons.push('Experience level is a great fit')
@@ -192,6 +196,7 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
   if (job.salary)
     reasons.push('Salary listed')
 
+  const W = roleActive ? W_WITH_ROLE : W_WITHOUT_ROLE
   const overall = Math.min(100, Math.round(
     skillScore    * W.skills   +
     levelScore    * W.level    +
@@ -205,6 +210,7 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
     level: levelScore,
     role: roleScore,
     location: locationScore,
+    roleActive,
     matchedSkills: matchedSkills.slice(0, 8),
     missingSignals,
     reasons,
