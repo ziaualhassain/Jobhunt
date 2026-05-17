@@ -257,7 +257,7 @@ async function upsertJobs(jobs, careerUrl, companyName) {
   if (jobs.length === 0) return;
   for (const job of jobs) {
     await pool.query(`
-      INSERT INTO career_page_jobs
+      INSERT INTO careers
         (job_id, company_name, career_url, title, location, region, url, description, job_type, tags)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
       ON CONFLICT (job_id) DO UPDATE SET

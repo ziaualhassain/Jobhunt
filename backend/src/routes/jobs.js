@@ -117,7 +117,7 @@ async function getCareerPageJobs(userId, filters) {
 
   const sql = `
     SELECT cpj.*
-    FROM career_page_jobs cpj
+    FROM careers cpj
     JOIN watched_companies wc ON wc.career_url = cpj.career_url
     WHERE ${conditions.join(' AND ')}
     ORDER BY cpj.scraped_at DESC

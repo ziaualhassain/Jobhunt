@@ -15,7 +15,7 @@ router.get('/', async (req, res) => {
       SELECT
         wc.id, wc.company_name, wc.career_url, wc.last_scraped_at,
         wc.scrape_error, wc.job_count, wc.created_at,
-        (SELECT COUNT(*) FROM career_page_jobs cpj WHERE cpj.career_url = wc.career_url) AS total_jobs
+        (SELECT COUNT(*) FROM careers cpj WHERE cpj.career_url = wc.career_url) AS total_jobs
       FROM watched_companies wc
       WHERE wc.user_id = $1 AND wc.is_active = true
       ORDER BY wc.created_at DESC
@@ -98,7 +98,7 @@ router.get('/jobs', async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT cpj.*
-      FROM career_page_jobs cpj
+      FROM careers cpj
       JOIN watched_companies wc ON wc.career_url = cpj.career_url
       WHERE wc.user_id = $1 AND wc.is_active = true
       ORDER BY cpj.scraped_at DESC
