@@ -2,25 +2,47 @@ import type { Job } from '../types'
 import type { ResumeAnalysis } from './api'
 
 export interface FitScore {
-  overall: number          // 0–100 weighted total
-  skills: number           // skill overlap %
-  level: number            // experience level proximity %
-  role: number             // job title match %
-  matchedSkills: string[]  // skills found in JD
-  missingSignals: string[] // JD tags not in resume
+  overall: number        // 0–100 weighted total
+  skills: number         // skill overlap %
+  level: number          // experience level proximity %
+  role: number           // job title match %
+  location: number       // region/remote match %
+  matchedSkills: string[]
+  missingSignals: string[]
+  reasons: string[]      // human-readable why this job ranked here
 }
 
 const LEVEL_MAP: Record<string, number> = {
   Junior: 1, 'Mid-level': 2, Senior: 3, Lead: 4, Staff: 5, Principal: 6,
 }
 
-// Score degradation per seniority level of distance
-const LEVEL_SCORE = [100, 75, 45, 20, 10, 5]
+// Score degradation table indexed by seniority distance (0 = perfect match)
+const LEVEL_SCORE = [100, 80, 50, 25, 10, 5]
 
-// Exported so JobsPage can pre-filter the "For You" list before scoring.
-// Parse the minimum years of experience required from a job description.
-// Handles: "5+ years", "3-5 years", "at least 4 years", "minimum 6 years",
-//          "5 years of experience", "5 years experience"
+// Skills that earn an extra bonus when matched — high-value signals
+const PRIMARY_SKILLS = new Set([
+  'python', 'typescript', 'javascript', 'java', 'golang', 'go', 'rust',
+  'kotlin', 'scala', 'c++', 'c#', 'php', 'ruby', 'swift',
+  'react', 'vue', 'angular', 'nextjs', 'next.js', 'node.js', 'nodejs',
+  'aws', 'azure', 'gcp', 'google cloud',
+  'kubernetes', 'k8s', 'docker', 'terraform', 'ansible',
+  'machine learning', 'deep learning', 'pytorch', 'tensorflow', 'llm',
+  'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch',
+  'graphql', 'grpc', 'rest api',
+  'spring', 'django', 'flask', 'fastapi', 'rails', 'express',
+])
+
+// Word-boundary match — prevents 'java' matching 'javascript', etc.
+function wordBoundaryTest(text: string, term: string): boolean {
+  if (!term || !text) return false
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  try {
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(text)
+  } catch {
+    return text.toLowerCase().includes(term.toLowerCase())
+  }
+}
+
 export function parseRequiredYears(text: string): number | null {
   const t = text.toLowerCase()
   const patterns = [
@@ -39,95 +61,153 @@ export function parseRequiredYears(text: string): number | null {
   return null
 }
 
-// Map years of experience to a seniority level number
 function yearsToLevel(years: number): number {
-  if (years >= 10) return 6  // Principal
-  if (years >= 7)  return 5  // Staff
-  if (years >= 5)  return 4  // Lead / Senior+
-  if (years >= 3)  return 3  // Senior
-  if (years >= 1)  return 2  // Mid-level
-  return 1                   // Junior
+  if (years >= 10) return 6
+  if (years >= 7)  return 5
+  if (years >= 5)  return 4
+  if (years >= 3)  return 3
+  if (years >= 1)  return 2
+  return 1
 }
 
-// Detect the seniority level of a job from its title and description.
-// Title keywords take priority; years of experience in description is the fallback.
 function detectJobLevel(title: string, description: string): number {
   const t = `${title} ${description}`.toLowerCase()
-
-  if (/\b(principal|distinguished|fellow)\b/.test(t))                        return 6
-  if (/\bstaff\s+(engineer|developer|dev)\b/.test(t))                        return 5
+  if (/\b(principal|distinguished|fellow)\b/.test(t))                                return 6
+  if (/\bstaff\s+(engineer|developer|dev)\b/.test(t))                                return 5
   if (/\b(tech\s*lead|lead\s+(engineer|developer|dev)|engineering\s+lead)\b/.test(t)) return 4
-  if (/\bsenior\b/.test(t))                                                  return 3
-  if (/\b(mid[- ]level|intermediate)\b/.test(t))                             return 2
-  if (/\b(junior|entry[- ]level|graduate|intern)\b/.test(t))                 return 1
-
-  // Fallback: infer level from required years mentioned in description
+  if (/\bsenior\b/.test(t))                                                          return 3
+  if (/\b(mid[- ]level|intermediate)\b/.test(t))                                     return 2
+  if (/\b(junior|entry[- ]level|graduate|intern)\b/.test(t))                         return 1
   const requiredYears = parseRequiredYears(description)
   if (requiredYears !== null) return yearsToLevel(requiredYears)
-
-  return 3 // default: mid-senior
+  return 2 // default: mid-level
 }
 
-// Compute a years-based experience penalty on top of level scoring.
-// Returns 0 (no penalty) to -40 (severe mismatch) so we don't over-penalise.
 function yearsGapPenalty(resumeYears: number | undefined, description: string): number {
   if (!resumeYears) return 0
   const required = parseRequiredYears(description)
   if (required === null) return 0
-
   const gap = required - resumeYears
-  if (gap <= 0) return 0            // candidate meets or exceeds requirement
-  // Under by 1–2 years: small penalty. Under by 3+: significant.
+  if (gap <= 0) return 0
   return Math.min(40, gap * 12)
 }
 
-export function scoreJob(job: Job, analysis: ResumeAnalysis): FitScore {
-  const jobText = `${job.title} ${job.tags ?? ''} ${job.description ?? ''}`.toLowerCase()
+// Weights: Skills 40% | Level 25% | Role 20% | Location 15%
+const W = { skills: 0.40, level: 0.25, role: 0.20, location: 0.15 }
+
+export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: string): FitScore {
   const desc = job.description ?? ''
-
-  // ── 1. Skill overlap (50%) ────────────────────────────────────────────────
+  const jobTextFull = `${job.title} ${job.tags ?? ''} ${desc}`
   const allSkills = [...new Set([...analysis.skills, ...analysis.searchKeywords])]
-  const matchedSkills = allSkills.filter(s => jobText.includes(s.toLowerCase()))
-  const skillScore = allSkills.length > 0
-    ? Math.min(100, Math.round((matchedSkills.length / allSkills.length) * 130))
-    : 50
 
-  // ── 2. Experience level fit (30%) ─────────────────────────────────────────
-  const resumeLevel = LEVEL_MAP[analysis.experienceLevel] ?? 3
+  // ── 1. Skill overlap (40%) ────────────────────────────────────────────────
+  // Word-boundary regex prevents 'java' → 'javascript' false positives
+  const matchedSkills = allSkills.filter(s => wordBoundaryTest(jobTextFull, s))
+
+  // Title match = primary tech stack signal → bonus up to +20
+  const titleMatches = matchedSkills.filter(s => wordBoundaryTest(job.title, s))
+  const titleBonus = Math.min(20, titleMatches.length * 7)
+
+  // High-value skill hit → bonus up to +15
+  const primaryMatches = matchedSkills.filter(s => PRIMARY_SKILLS.has(s.toLowerCase()))
+  const primaryBonus = Math.min(15, primaryMatches.length * 4)
+
+  const rawSkillPct = allSkills.length > 0
+    ? (matchedSkills.length / allSkills.length) * 100
+    : 50
+  const skillScore = Math.min(100, Math.round(rawSkillPct + titleBonus + primaryBonus))
+
+  // ── 2. Experience level fit (25%) ─────────────────────────────────────────
+  const resumeLevel = LEVEL_MAP[analysis.experienceLevel] ?? 2
   const jobLevel    = detectJobLevel(job.title, desc)
-  // Base level score from seniority distance
   const baseLevelScore = LEVEL_SCORE[Math.abs(resumeLevel - jobLevel)] ?? 5
-  // Subtract years gap penalty (e.g. JD asks 7 yrs, candidate has 2 yrs → -60 → floor 0)
   const penalty    = yearsGapPenalty(analysis.yearsOfExperience, desc)
   const levelScore = Math.max(0, baseLevelScore - penalty)
 
   // ── 3. Role / title match (20%) ───────────────────────────────────────────
-  const jobTitle = job.title.toLowerCase()
+  const jobTitleLower = job.title.toLowerCase()
   const roleWords = analysis.jobTitles
     .flatMap(t => t.toLowerCase().split(/\s+/))
     .filter(w => w.length > 3)
-  const roleHits = roleWords.filter(w => jobTitle.includes(w)).length
-  const roleScore = roleWords.length > 0
-    ? Math.min(100, Math.round((roleHits / roleWords.length) * 250))
+
+  // Exact phrase match in title is the strongest role signal
+  const exactTitleMatch = analysis.jobTitles.some(t =>
+    job.title.toLowerCase().includes(t.toLowerCase())
+  )
+  const roleHits = roleWords.filter(w => wordBoundaryTest(jobTitleLower, w)).length
+  const rawRoleScore = roleWords.length > 0
+    ? Math.round((roleHits / roleWords.length) * 200)
     : 40
+  const roleScore = Math.min(100, rawRoleScore + (exactTitleMatch ? 20 : 0))
+
+  // ── 4. Location match (15%) ───────────────────────────────────────────────
+  let locationScore = 60 // neutral — no preference set → not penalised
+  if (profileRegion) {
+    const jobLoc = `${job.location ?? ''} ${job.region ?? ''}`.toLowerCase()
+    const pRegion = profileRegion.toLowerCase()
+    const isRemote = /remote|anywhere|worldwide|global/.test(jobLoc)
+    const regionMatch = jobLoc.includes(pRegion)
+
+    if (pRegion === 'remote') {
+      locationScore = isRemote ? 100 : 30
+    } else if (regionMatch) {
+      locationScore = 100
+    } else if (isRemote) {
+      locationScore = 70 // remote acceptable even when user prefers a region
+    } else {
+      locationScore = 15 // clear location mismatch
+    }
+  }
 
   // ── Missing signals ───────────────────────────────────────────────────────
   const resumeSkillsLower = allSkills.map(s => s.toLowerCase())
   const missingSignals = (job.tags ?? '')
     .split(',')
     .map(t => t.trim())
-    .filter(t => t.length > 2 && !resumeSkillsLower.some(s => s.includes(t.toLowerCase()) || t.toLowerCase().includes(s)))
-    .slice(0, 5)
+    .filter(t => t.length > 2 && !resumeSkillsLower.some(s =>
+      s.includes(t.toLowerCase()) || t.toLowerCase().includes(s)
+    ))
+    .slice(0, 6)
 
-  const overall = Math.min(100, Math.round(skillScore * 0.5 + levelScore * 0.3 + roleScore * 0.2))
+  // ── Human-readable reasons ────────────────────────────────────────────────
+  const reasons: string[] = []
+  if (titleMatches.length > 0)
+    reasons.push(`${titleMatches.slice(0, 3).join(', ')} in job title`)
+  if (matchedSkills.length >= 5)
+    reasons.push(`${matchedSkills.length} of your skills found`)
+  else if (matchedSkills.length > 0)
+    reasons.push(`${matchedSkills.length} skill${matchedSkills.length > 1 ? 's' : ''} matched`)
+  else
+    reasons.push('No skill overlap detected')
+  if (exactTitleMatch)
+    reasons.push('Title matches your target role')
+  if (levelScore >= 80)
+    reasons.push('Experience level is a great fit')
+  else if (levelScore < 30)
+    reasons.push('Experience level gap')
+  if (profileRegion && locationScore >= 100)
+    reasons.push(`Located in ${profileRegion}`)
+  else if (profileRegion && locationScore < 30)
+    reasons.push('Location outside preference')
+  if (job.salary)
+    reasons.push('Salary listed')
+
+  const overall = Math.min(100, Math.round(
+    skillScore    * W.skills   +
+    levelScore    * W.level    +
+    roleScore     * W.role     +
+    locationScore * W.location
+  ))
 
   return {
     overall,
     skills: skillScore,
     level: levelScore,
     role: roleScore,
+    location: locationScore,
     matchedSkills: matchedSkills.slice(0, 8),
     missingSignals,
+    reasons,
   }
 }
 

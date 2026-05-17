@@ -86,6 +86,7 @@ async function getTheirStackJobs(filters) {
       source:      'TheirStack',
       tags:        row.tags,
       logo:        row.logo,
+      date_posted: row.date_posted ? new Date(row.date_posted).toISOString() : null,
     }));
   } catch (err) {
     console.error('[TheirStack DB] query failed:', err.message);
@@ -174,6 +175,7 @@ async function getCareerPageJobs(userId, filters) {
       source:      'Company Watch',
       tags:        r.tags || '',
       logo:        '',
+      date_posted: r.scraped_at ? new Date(r.scraped_at).toISOString() : null,
     }));
   } catch (err) {
     console.error('[CareerPageJobs] query failed:', err.message);
@@ -233,6 +235,7 @@ async function getDefaultCareerJobs(filters) {
       source:      'Company Watch',
       tags:        r.tags || '',
       logo:        '',
+      date_posted: r.scraped_at ? new Date(r.scraped_at).toISOString() : null,
     }));
   } catch (err) {
     console.error('[DefaultCareerJobs] query failed:', err.message);
@@ -300,18 +303,25 @@ function detectBackendJobLevel(title, desc) {
 
 function rankJobs(jobs, filters) {
   const { keywords = [], tags = [], experienceLevel = '' } = filters;
-  const signals = [...new Set([...keywords, ...tags])]
-    .filter(Boolean)
-    .flatMap(s =>
-      s.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w))
-    );
+  const rawSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
 
-  // Pre-compile word-boundary regexes once per signal
-  const signalRegexes = signals.map(w => ({
-    re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
-  }));
+  // Single-word tokens for word-boundary matching
+  const signals = rawSignals.flatMap(s =>
+    s.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w))
+  );
+
+  // Multi-word phrases get a separate phrase-match bonus
+  const phrases = rawSignals.filter(s => s.split(/\s+/).length > 1);
+
+  const signalRegexes = signals.map(w =>
+    new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+  );
+  const phraseRegexes = phrases.map(p =>
+    new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')
+  );
 
   const filterLevel = BACKEND_LEVEL_MAP[experienceLevel] ?? null;
+  const now = Date.now();
 
   return jobs
     .map(job => {
@@ -321,29 +331,49 @@ function rankJobs(jobs, filters) {
       const desc    = job.description || '';
 
       // ── Keyword relevance ─────────────────────────────────────────────────
+      // Title weight raised 40→60: it's the single most intent-bearing field.
       let signalsMatched = 0;
-      for (const { re } of signalRegexes) {
+      for (const re of signalRegexes) {
         const inTitle = re.test(title);
         const inTags  = re.test(jobTags);
         const inDesc  = re.test(desc);
         if (inTitle || inTags || inDesc) signalsMatched++;
-        if (inTitle) score += 40;
-        if (inTags)  score += 25;
-        if (inDesc)  score += 5;
+        if (inTitle) score += 60;
+        if (inTags)  score += 30;
+        if (inDesc)  score += 8;
       }
 
-      // Coverage multiplier: all 4 signals matched → ×2.0, 1/4 → ×1.25
+      // Coverage multiplier: all signals matched → ×2.0, partial → proportional
       if (signals.length > 0) {
         score = Math.round(score * (1 + signalsMatched / signals.length));
       }
 
-      // ── Experience level penalty ──────────────────────────────────────────
-      // Penalise when the job's seniority clearly mismatches the filter.
-      // e.g. Junior searching → Senior role loses 60 pts; Senior searching → intern role loses 30 pts.
+      // Phrase match bonus — "machine learning" as phrase > individual words
+      for (const re of phraseRegexes) {
+        if (re.test(title))   score += 35;
+        else if (re.test(jobTags)) score += 20;
+        else if (re.test(desc))    score += 6;
+      }
+
+      // ── Experience level scoring ──────────────────────────────────────────
+      // Bonus for perfect/near match; exponential penalty for large gaps.
       if (filterLevel !== null) {
         const jobLevel = detectBackendJobLevel(title, desc);
         const diff = Math.abs(jobLevel - filterLevel);
-        if (diff >= 2) score -= diff * 25;   // 2 levels off: -50, 3: -75, etc.
+        if (diff === 0)      score += 35;  // perfect match
+        else if (diff === 1) score += 10;  // one level off: acceptable
+        else                 score -= diff * 30; // 2+ levels: escalating penalty
+      }
+
+      // ── Recency bonus ─────────────────────────────────────────────────────
+      // Newer jobs rank higher — shows candidate the freshest opportunities first.
+      const dateStr = job.date_posted || job.scraped_at;
+      if (dateStr) {
+        const daysOld = (now - new Date(dateStr).getTime()) / 86_400_000;
+        if (daysOld <= 2)       score += 40;
+        else if (daysOld <= 7)  score += 25;
+        else if (daysOld <= 14) score += 12;
+        else if (daysOld <= 30) score += 5;
       }
 
       // ── Completeness bonuses (source-neutral) ─────────────────────────────
@@ -351,6 +381,7 @@ function rankJobs(jobs, filters) {
       score += Math.min(tagCount * 4, 40);
       if (job.salary)        score += 15;
       if (desc.length > 100) score += 10;
+      if (desc.length > 600) score += 8;  // rich description
 
       return { ...job, _score: score };
     })

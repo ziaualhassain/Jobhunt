@@ -290,7 +290,7 @@ export default function JobsPage() {
   const fitScores = useMemo<Map<string, FitScore>>(() => {
     if (!effectiveAnalysis) return new Map()
     const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
-    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis)]))
+    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis, profileRegion)]))
   }, [effectiveAnalysis, browseData, curatedData])
 
   // Collect all distinct sources across both tabs for the quick-filter chips
@@ -520,7 +520,38 @@ export default function JobsPage() {
                       </span>
                     )}
                   </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
+                  {PERCENTAGE_ENABLE && effectiveAnalysis ? (
+                    <>
+                      {(
+                        [
+                          { label: 'Excellent match', min: 80, next: 101, color: 'text-emerald-400' },
+                          { label: 'Good match',      min: 65, next: 80,  color: 'text-blue-400'    },
+                          { label: 'Partial match',   min: 45, next: 65,  color: 'text-yellow-500'  },
+                          { label: 'Low match',       min: 0,  next: 45,  color: 'text-slate-500'   },
+                        ] as const
+                      ).map(({ label, min, next, color }) => {
+                        const tierJobs = curatedJobs.filter(j => {
+                          const s = fitScores.get(j.job_id)?.overall ?? 0
+                          return s >= min && s < next
+                        })
+                        if (tierJobs.length === 0) return null
+                        return (
+                          <div key={label}>
+                            <div className="flex items-center gap-3 mt-5 mb-3">
+                              <div className="h-px flex-1 bg-slate-700/40" />
+                              <span className={`text-[10px] font-bold uppercase tracking-widest ${color}`}>
+                                {label} · {tierJobs.length}
+                              </span>
+                              <div className="h-px flex-1 bg-slate-700/40" />
+                            </div>
+                            <JobGrid jobs={tierJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
+                          </div>
+                        )
+                      })}
+                    </>
+                  ) : (
+                    <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
+                  )}
                 </>
               )}
             </>

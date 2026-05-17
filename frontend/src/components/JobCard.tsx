@@ -115,12 +115,18 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
               </div>
             </div>
 
-            {/* Badges: fit score + source */}
+            {/* Badges: fit score + source + new */}
             <div className="flex items-center gap-1.5 shrink-0">
               {PERCENTAGE_ENABLE && displayScore && (
                 <ScoreCircle score={displayScore.overall} onClick={() => setScoreOpen(v => !v)} />
               )}
               <span className={`badge border text-[10px] ${sourceClass}`}>{job.source}</span>
+              {job.date_posted && (() => {
+                const daysOld = (Date.now() - new Date(job.date_posted).getTime()) / 86_400_000
+                return daysOld <= 3 ? (
+                  <span className="badge bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-semibold">New</span>
+                ) : null
+              })()}
             </div>
           </div>
 
@@ -215,15 +221,28 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
                 </div>
               )}
 
+              {/* Why this job: reasons chips */}
+              {fitScore.reasons && fitScore.reasons.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {fitScore.reasons.map(r => (
+                    <span key={r} className="badge bg-slate-800/60 text-slate-400 border border-slate-700/60 text-[10px]">
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Score formula explanation */}
               <div className="rounded-lg bg-slate-900/50 border border-slate-700/40 px-2.5 py-2 space-y-1.5">
                 <p className="text-[10px] text-slate-500 font-medium mb-2">How this score is calculated</p>
                 <ScoreBar value={aiScore ? aiScore.score : fitScore.skills} label="Skills" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Skill overlap with your resume keywords · weight 50%</p>
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Skill overlap with your resume keywords · weight 40%</p>
                 <ScoreBar value={fitScore.level} label="Level" />
-                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Seniority match + years-of-experience fit · weight 30%</p>
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Seniority match + years-of-experience fit · weight 25%</p>
                 <ScoreBar value={fitScore.role}  label="Role" />
                 <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Job title alignment with your target roles · weight 20%</p>
+                <ScoreBar value={fitScore.location ?? 60} label="Location" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Region preference match (remote / country) · weight 15%</p>
               </div>
 
               {/* Pros — matched skills */}
