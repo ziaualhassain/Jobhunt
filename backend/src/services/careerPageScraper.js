@@ -456,8 +456,8 @@ async function syncDefaultCompanies() {
 
   const { rows } = await pool.query(`
     SELECT company_name, career_url FROM default_career_pages
-    WHERE last_scraped_at IS NULL OR last_scraped_at < NOW() - INTERVAL '6 hours'
-  `);
+    WHERE last_scraped_at IS NULL OR last_scraped_at < NOW() - ($1 * INTERVAL '1 hour')
+  `, [SYNC_INTERVAL_HOURS]);
 
   for (const row of rows) {
     const { jobs, error } = await scrapeCareerPage(row.company_name, row.career_url);
@@ -475,9 +475,9 @@ async function syncAllWatchedCompanies() {
     SELECT DISTINCT ON (career_url) id, user_id, company_name, career_url
     FROM watched_companies
     WHERE is_active = true
-      AND (last_scraped_at IS NULL OR last_scraped_at < NOW() - INTERVAL '6 hours')
+      AND (last_scraped_at IS NULL OR last_scraped_at < NOW() - ($1 * INTERVAL '1 hour'))
     ORDER BY career_url, last_scraped_at ASC NULLS FIRST
-  `);
+  `, [SYNC_INTERVAL_HOURS]);
 
   for (const row of rows) {
     const { jobs, error } = await scrapeCareerPage(row.company_name, row.career_url);
@@ -493,7 +493,9 @@ async function syncAllWatchedCompanies() {
   await syncDefaultCompanies();
 }
 
-const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+// CAREER_SYNC_HOURS=6  (default). Set lower (e.g. 1) to scrape more frequently.
+const SYNC_INTERVAL_HOURS = Math.max(1, parseInt(process.env.CAREER_SYNC_HOURS || '6', 10));
+const SYNC_INTERVAL_MS    = SYNC_INTERVAL_HOURS * 60 * 60 * 1000;
 
 function startCareerPageSync() {
   setTimeout(async () => {
@@ -504,7 +506,7 @@ function startCareerPageSync() {
     try { await syncAllWatchedCompanies(); } catch (e) { console.error('[CareerScraper] Sync error:', e.message); }
   }, SYNC_INTERVAL_MS);
 
-  console.log('[CareerScraper] Sync scheduled every 6 h');
+  console.log(`[CareerScraper] Sync scheduled every ${SYNC_INTERVAL_HOURS} h`);
 }
 
 module.exports = { scrapeCareerPage, syncAllWatchedCompanies, startCareerPageSync, upsertJobs, DEFAULT_COMPANIES };
