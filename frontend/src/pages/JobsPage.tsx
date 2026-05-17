@@ -333,7 +333,22 @@ export default function JobsPage() {
   const applySourceFilter = (jobs: Job[]) =>
     selectedSources.length === 0 ? jobs : jobs.filter(j => selectedSources.includes(j.source))
 
-  const browseJobs = applySourceFilter([...(browseData?.jobs ?? [])])
+  // When browsing with resume-based search, apply the same seniority filter
+  // as For You so junior users don't see 500 senior/lead jobs.
+  const rawBrowseJobs = browseData?.jobs ?? []
+  const seniorityFilteredBrowse = resumeFilters
+    ? rawBrowseJobs.filter(job => {
+        const text = `${job.title ?? ''} ${(job.description ?? '').slice(0, 400)}`
+        if (userLevel >= 2 && INTERN_RE.test(text))  return false
+        if (userLevel >= 3 && JUNIOR_RE.test(text))  return false
+        if (candidateYears) {
+          const required = parseRequiredYears(job.description ?? '')
+          if (required !== null && required > candidateYears + 2) return false
+        }
+        return true
+      })
+    : rawBrowseJobs
+  const browseJobs = applySourceFilter([...seniorityFilteredBrowse])
   if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
   else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
   else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))

@@ -299,7 +299,7 @@ function detectBackendJobLevel(title, desc) {
     if (yrs >= 1)  return 2;
     return 1;
   }
-  return 3;
+  return 2;  // default: mid-level (unlabelled jobs skew mid)
 }
 
 function rankJobs(jobs, filters) {
@@ -387,6 +387,17 @@ function rankJobs(jobs, filters) {
       return { ...job, _score: score };
     })
     .sort((a, b) => b._score - a._score)
+    .filter(job => {
+      if (filterLevel === null) return true;
+      const titleLow = (job.title || '').toLowerCase();
+      const headLow  = (job.description || '').slice(0, 300).toLowerCase();
+      // Junior (≤1): exclude jobs that explicitly signal Senior / Lead / Staff / Principal in the title
+      if (filterLevel <= 1 && /\b(senior|sr\.|lead\s+(engineer|developer|dev)|staff\s+(engineer|developer)|principal|distinguished|fellow)\b/.test(titleLow)) return false;
+      // Mid-level+ (≥2): exclude explicit intern / trainee / fresher / apprentice
+      if (filterLevel >= 2 && /\b(intern(ship)?|trainee|apprentice|fresher)\b/.test(titleLow + ' ' + headLow)) return false;
+      return true;
+    })
+    .slice(0, 100)
     .map(({ _score, ...job }) => job);
 }
 
