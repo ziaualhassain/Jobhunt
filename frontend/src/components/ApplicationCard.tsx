@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Trash2, Edit3, Check, X, Calendar, Building2, GripVertical, Lock } from 'lucide-react'
+import { ExternalLink, Trash2, Edit3, Check, X, Calendar, Building2, GripVertical, Lock, PowerOff } from 'lucide-react'
 import type { Application, ApplicationStatus } from '../types'
 import { STATUS_CONFIG } from '../types'
 
@@ -23,6 +23,7 @@ export default function ApplicationCard({
   const [noteDraft, setNoteDraft] = useState(app.notes || '')
   const cfg = STATUS_CONFIG[app.status]
   const isJobHunters = app.source === 'JobHunters'
+  const isClosed = isJobHunters && app.job_active === false
 
   function saveNotes() {
     onNotesChange(app.id, noteDraft)
@@ -38,7 +39,11 @@ export default function ApplicationCard({
       draggable={!isJobHunters}
       onDragStart={() => { if (!isJobHunters) onDragStart(app.id) }}
       onDragEnd={onDragEnd}
-      className={`card p-3 space-y-2 group transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+      className={`card p-3 space-y-2 group transition-all ${
+        isClosed
+          ? 'opacity-50 border-slate-700/30 bg-slate-900/60'
+          : isDragging ? 'opacity-40' : 'opacity-100'
+      }`}
     >
       <div className="flex items-start gap-1.5">
         {isJobHunters ? (
@@ -52,7 +57,16 @@ export default function ApplicationCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-200 leading-snug truncate">{app.title}</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className={`text-sm font-medium leading-snug truncate ${isClosed ? 'text-slate-500 line-through decoration-slate-600' : 'text-slate-200'}`}>
+                  {app.title}
+                </p>
+                {isClosed && (
+                  <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-800/50">
+                    <PowerOff size={7} />Closed
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <Building2 size={11} />
                 {app.company}
@@ -73,7 +87,7 @@ export default function ApplicationCard({
                 {cfg.label}
               </span>
               <p className="text-[10px] text-slate-600 text-center flex items-center justify-center gap-0.5">
-                <Lock size={8} />Recruiter-managed
+                <Lock size={8} />{isClosed ? 'Position closed by recruiter' : 'Recruiter-managed'}
               </p>
             </div>
           ) : (
