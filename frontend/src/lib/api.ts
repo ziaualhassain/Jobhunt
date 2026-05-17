@@ -676,7 +676,7 @@ export async function updateRecruiterJob(jobId: string, data: Partial<{
   experienceLevel: string
   skills: string
   salary: string
-  is_active: boolean
+  isActive: boolean
 }>): Promise<RecruiterJob> {
   const res = await api.patch(`/recruiter/jobs/${jobId}`, data)
   return res.data

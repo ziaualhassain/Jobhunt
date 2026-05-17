@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Briefcase, Plus, X, Loader2, AlertCircle, Users, ChevronDown, ChevronUp,
   ToggleLeft, ToggleRight, CheckCircle2, Clock, Building2, MapPin, Phone,
-  Linkedin, Globe, DollarSign, Star, FileText, StickyNote, User,
+  Linkedin, Globe, DollarSign, Star, FileText, StickyNote, User, PowerOff,
 } from 'lucide-react'
 import {
   getMyRecruiterJobs, postRecruiterJob, updateRecruiterJob,
@@ -397,20 +397,33 @@ function JobCardRecruiter({ job, onViewApplicants, activeJobId }: {
 }) {
   const qc = useQueryClient()
   const toggleMutation = useMutation({
-    mutationFn: () => updateRecruiterJob(String(job.id), { is_active: !job.is_active }),
+    mutationFn: () => updateRecruiterJob(String(job.id), { isActive: !job.is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiter-jobs'] }),
   })
   const isViewing = activeJobId === job.id
+  const deactivated = !job.is_active
 
   return (
-    <div className={`card p-4 space-y-3 transition-colors ${isViewing ? 'border-brand-500/40 bg-brand-500/5' : ''}`}>
+    <div className={`card p-4 space-y-3 transition-all ${
+      deactivated
+        ? 'opacity-60 border-slate-700/30 bg-slate-900/60 grayscale-[30%]'
+        : isViewing
+          ? 'border-brand-500/40 bg-brand-500/5'
+          : ''
+    }`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-slate-100">{job.title}</h3>
-            {!job.is_active && <span className="badge bg-slate-700 text-slate-400 border border-slate-600 text-[10px]">Inactive</span>}
+            <h3 className={`font-semibold ${deactivated ? 'text-slate-500 line-through decoration-slate-600' : 'text-slate-100'}`}>
+              {job.title}
+            </h3>
+            {deactivated && (
+              <span className="badge bg-red-900/40 text-red-400 border border-red-800/50 text-[10px] flex items-center gap-0.5">
+                <PowerOff size={8} />Deactivated
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
+          <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-500">
             <Building2 size={11} />{job.company}
           </div>
         </div>
@@ -425,7 +438,7 @@ function JobCardRecruiter({ job, onViewApplicants, activeJobId }: {
         {job.location && <span className="flex items-center gap-1"><MapPin size={11} />{job.location}</span>}
         {job.job_type && <span className="flex items-center gap-1"><Briefcase size={11} />{job.job_type}</span>}
         {job.experience_level && <span className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">{job.experience_level}</span>}
-        {job.salary && <span className="text-emerald-400 font-medium">{job.salary}</span>}
+        {job.salary && <span className={`font-medium ${deactivated ? 'text-slate-500' : 'text-emerald-400'}`}>{job.salary}</span>}
       </div>
 
       {job.skills && <SkillChips raw={job.skills} />}
@@ -449,12 +462,15 @@ function JobCardRecruiter({ job, onViewApplicants, activeJobId }: {
             onClick={() => toggleMutation.mutate()}
             disabled={toggleMutation.isPending}
             className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
-              job.is_active ? 'text-slate-400 hover:text-red-400 hover:bg-red-500/10' : 'text-emerald-400 hover:bg-emerald-500/10'
+              deactivated
+                ? 'text-emerald-400 hover:bg-emerald-500/10 border border-emerald-700/40'
+                : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
             }`}
           >
-            {toggleMutation.isPending ? <Loader2 size={12} className="animate-spin" />
-              : job.is_active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
-            {job.is_active ? 'Deactivate' : 'Activate'}
+            {toggleMutation.isPending
+              ? <Loader2 size={12} className="animate-spin" />
+              : deactivated ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+            {deactivated ? 'Activate' : 'Deactivate'}
           </button>
         </div>
       </div>
