@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const { shouldUseApi } = require('../services/llmProvider');
 const { aggregateJobs } = require('../services/jobSources');
+const { enrichMissingTitles } = require('../services/titleExtractor');
 const { pool } = require('../db/database');
 
 // Decodes the JWT if present but never blocks the request (for public endpoints)
@@ -532,6 +533,12 @@ router.post('/deep-score', async (req, res) => {
     console.error('[DeepScore]', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// Admin: manually trigger title enrichment for jobs with missing titles
+router.post('/admin/enrich-titles', async (_req, res) => {
+  res.json({ ok: true, message: 'Title enrichment started in background' });
+  enrichMissingTitles().catch(err => console.error('[TitleExtractor] Manual run failed:', err.message));
 });
 
 module.exports = router;
