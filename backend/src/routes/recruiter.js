@@ -88,6 +88,17 @@ router.patch('/jobs/:id', async (req, res) => {
        isActive ?? null, req.params.id, req.user.id]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
+
+    // When deactivating, reject all in-progress tracker entries except Offer
+    if (isActive === false) {
+      await pool.query(
+        `UPDATE applications
+         SET status = 'rejected', updated_at = NOW()
+         WHERE job_id = $1 AND status != 'offer'`,
+        [`jh-${req.params.id}`]
+      );
+    }
+
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
