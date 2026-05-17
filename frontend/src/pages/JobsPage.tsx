@@ -13,6 +13,7 @@ import { scoreJob, parseRequiredYears } from '../lib/jobScorer'
 import type { FitScore } from '../lib/jobScorer'
 
 type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
+type CuratedSortKey = 'match' | 'latest' | 'title' | 'company'
 type Tab = 'curated' | 'browse'
 
 // ISO 3166-1 alpha-2 → our region tags
@@ -79,6 +80,7 @@ export default function JobsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('curated')
   const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
   const [sort, setSort] = useState<SortKey>(PERCENTAGE_ENABLE ? 'match' : 'default')
+  const [curatedSort, setCuratedSort] = useState<CuratedSortKey>('match')
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
@@ -327,11 +329,20 @@ export default function JobsPage() {
   }, [curatedData, candidateYears])
 
   const curatedJobsFiltered = applySourceFilter(
-    PERCENTAGE_ENABLE && effectiveAnalysis
-      ? [...experienceFilteredJobs].sort(
-          (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
-        )
-      : experienceFilteredJobs
+    (() => {
+      const base = [...experienceFilteredJobs]
+      if (curatedSort === 'title')   return base.sort((a, b) => a.title.localeCompare(b.title))
+      if (curatedSort === 'company') return base.sort((a, b) => a.company.localeCompare(b.company))
+      if (curatedSort === 'latest')  return base.sort((a, b) => {
+        const da = a.date_posted ? new Date(a.date_posted).getTime() : 0
+        const db = b.date_posted ? new Date(b.date_posted).getTime() : 0
+        return db - da
+      })
+      // 'match' (default): sort by fit score when available, else keep backend order
+      if (PERCENTAGE_ENABLE && effectiveAnalysis)
+        return base.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
+      return base
+    })()
   )
   const curatedJobs = curatedJobsFiltered
   const expFilteredCount = (curatedData?.jobs?.length ?? 0) - experienceFilteredJobs.length
@@ -512,14 +523,29 @@ export default function JobsPage() {
                       )}
                     </div>
                   )}
-                  <p className="text-sm text-slate-500">
-                    <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
-                    {expFilteredCount > 0 && (
-                      <span className="ml-2 text-slate-600 text-xs">
-                        · {expFilteredCount} hidden (experience requirement too high)
-                      </span>
-                    )}
-                  </p>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <p className="text-sm text-slate-500">
+                      <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
+                      {expFilteredCount > 0 && (
+                        <span className="ml-2 text-slate-600 text-xs">
+                          · {expFilteredCount} hidden (experience requirement too high)
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-1.5">
+                      <SortAsc size={13} className="text-slate-500" />
+                      <select
+                        className="text-xs bg-slate-800 border border-slate-700 text-slate-400 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        value={curatedSort}
+                        onChange={e => setCuratedSort(e.target.value as CuratedSortKey)}
+                      >
+                        <option value="match">Sort: Best Match</option>
+                        <option value="latest">Sort: Latest</option>
+                        <option value="title">Sort: Title A→Z</option>
+                        <option value="company">Sort: Company A→Z</option>
+                      </select>
+                    </div>
+                  </div>
                   <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} profileRegion={profileRegion} />
                 </>
               )}
