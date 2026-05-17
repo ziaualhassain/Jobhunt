@@ -9,7 +9,7 @@ import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile, getBehavioralSignals } from '../lib/api'
 import type { ResumeAnalysis, BehavioralSignals } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
-import { scoreJob, parseRequiredYears } from '../lib/jobScorer'
+import { scoreJob, parseRequiredYears, LEVEL_MAP } from '../lib/jobScorer'
 import type { FitScore } from '../lib/jobScorer'
 
 type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
@@ -342,18 +342,31 @@ export default function JobsPage() {
 
   // Candidate's years — prefer live resume analysis, fall back to profile setting
   const candidateYears = effectiveAnalysis?.yearsOfExperience ?? profileYears ?? 0
+  const userLevel      = LEVEL_MAP[effectiveAnalysis?.experienceLevel ?? ''] ?? 0
 
-  // For You: filter out jobs whose stated experience requirement exceeds the
-  // candidate's years by more than 2 (e.g. a 3yr candidate won't see "6-8 years").
-  // Jobs with no stated requirement are always kept.
+  // Intern / junior detection patterns
+  const INTERN_RE  = /\b(intern(ship)?|trainee|apprentice|fresher|graduate\s+(?:program|scheme|trainee))\b/i
+  const JUNIOR_RE  = /\b(junior|entry[- ]level|jr\.?\s+(?:dev|developer|engineer))\b/i
+
+  // For You: filter out jobs that are a poor seniority fit.
+  // — Too senior: stated requirement exceeds candidate's years by more than 2
+  // — Too junior: intern/trainee roles for Mid-level+ users; junior/entry-level for Senior+
   const experienceFilteredJobs = useMemo(() => {
     const all = curatedData?.jobs ?? []
-    if (!candidateYears) return all
+    if (!candidateYears && !userLevel) return all
     return all.filter(job => {
-      const required = parseRequiredYears(job.description ?? '')
-      return required === null || required <= candidateYears + 2
+      const text = `${job.title ?? ''} ${(job.description ?? '').slice(0, 400)}`
+      // Too junior checks (only when we know the user's level)
+      if (userLevel >= 2 && INTERN_RE.test(text))  return false
+      if (userLevel >= 3 && JUNIOR_RE.test(text)) return false
+      // Too senior: required years too far above candidate
+      if (candidateYears) {
+        const required = parseRequiredYears(job.description ?? '')
+        if (required !== null && required > candidateYears + 2) return false
+      }
+      return true
     })
-  }, [curatedData, candidateYears])
+  }, [curatedData, candidateYears, userLevel])
 
   const curatedJobsFiltered = applySourceFilter(
     (() => {

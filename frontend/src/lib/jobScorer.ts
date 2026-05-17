@@ -13,7 +13,7 @@ export interface FitScore {
   reasons: string[]
 }
 
-const LEVEL_MAP: Record<string, number> = {
+export const LEVEL_MAP: Record<string, number> = {
   Junior: 1, 'Mid-level': 2, Senior: 3, Lead: 4, Staff: 5, Principal: 6,
 }
 
