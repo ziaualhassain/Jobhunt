@@ -81,6 +81,7 @@ export default function JobsPage() {
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
   const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null)
+  const [selectedSources, setSelectedSources] = useState<string[]>([])
 
   // ── IP geolocation ──────────────────────────────────────────────────────────
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null)
@@ -279,7 +280,18 @@ export default function JobsPage() {
     return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis)]))
   }, [effectiveAnalysis, browseData, curatedData])
 
-  const browseJobs = [...(browseData?.jobs ?? [])]
+  // Collect all distinct sources across both tabs for the quick-filter chips
+  const allSources = useMemo(() => {
+    const s = new Set<string>()
+    ;(browseData?.jobs ?? []).forEach(j => s.add(j.source))
+    ;(curatedData?.jobs ?? []).forEach(j => s.add(j.source))
+    return [...s].sort()
+  }, [browseData, curatedData])
+
+  const applySourceFilter = (jobs: Job[]) =>
+    selectedSources.length === 0 ? jobs : jobs.filter(j => selectedSources.includes(j.source))
+
+  const browseJobs = applySourceFilter([...(browseData?.jobs ?? [])])
   if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
   else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
   else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))
@@ -287,11 +299,13 @@ export default function JobsPage() {
     browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
 
   // For You always sorted highest → lowest match when percentage feature is on
-  const curatedJobs = PERCENTAGE_ENABLE && effectiveAnalysis
-    ? [...(curatedData?.jobs ?? [])].sort(
-        (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
-      )
-    : (curatedData?.jobs ?? [])
+  const curatedJobs = applySourceFilter(
+    PERCENTAGE_ENABLE && effectiveAnalysis
+      ? [...(curatedData?.jobs ?? [])].sort(
+          (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
+        )
+      : (curatedData?.jobs ?? [])
+  )
 
   // Chips showing which profile attributes drive the curated feed
   const expChip = effectiveExperienceLevel
@@ -439,8 +453,38 @@ export default function JobsPage() {
 
               {!curatedLoading && curatedJobs.length > 0 && (
                 <>
+                  {allSources.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-slate-600 shrink-0">Source:</span>
+                      {allSources.map(src => (
+                        <button
+                          key={src}
+                          type="button"
+                          onClick={() => setSelectedSources(prev =>
+                            prev.includes(src) ? prev.filter(s => s !== src) : [...prev, src]
+                          )}
+                          className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
+                            selectedSources.includes(src)
+                              ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 ring-1 ring-brand-500/20'
+                              : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:border-slate-500 hover:text-slate-300'
+                          }`}
+                        >
+                          {src}
+                        </button>
+                      ))}
+                      {selectedSources.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSources([])}
+                          className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400 transition-colors"
+                        >
+                          <X size={11} /> Clear
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <p className="text-sm text-slate-500">
-                    <span className="text-slate-200 font-medium">{curatedData?.total ?? curatedJobs.length}</span> jobs curated for you
+                    <span className="text-slate-200 font-medium">{curatedJobs.length}</span> jobs curated for you{selectedSources.length > 0 ? ' (filtered)' : ''}
                   </p>
                   <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
                 </>
@@ -477,13 +521,45 @@ export default function JobsPage() {
             initialFilters={resumeFilters ?? (filters ?? browseFilters)}
           />
 
+          {/* Source quick-filter chips */}
+          {allSources.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-slate-600 shrink-0">Source:</span>
+              {allSources.map(src => (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => setSelectedSources(prev =>
+                    prev.includes(src) ? prev.filter(s => s !== src) : [...prev, src]
+                  )}
+                  className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-all ${
+                    selectedSources.includes(src)
+                      ? 'bg-brand-500/20 text-brand-300 border-brand-500/40 ring-1 ring-brand-500/20'
+                      : 'bg-slate-800/80 text-slate-400 border-slate-700/80 hover:border-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {src}
+                </button>
+              ))}
+              {selectedSources.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedSources([])}
+                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-slate-400 transition-colors"
+                >
+                  <X size={11} /> Clear
+                </button>
+              )}
+            </div>
+          )}
+
           {(browseData || browseLoading) && (
             <div className="flex items-center justify-between">
               <p className="text-sm text-slate-500">
                 {browseLoading ? (
                   <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Fetching jobs…</span>
                 ) : (
-                  <span><span className="text-slate-200 font-medium">{browseData?.total ?? 0}</span> jobs found</span>
+                  <span><span className="text-slate-200 font-medium">{browseJobs.length}</span> jobs found{selectedSources.length > 0 ? ` (filtered)` : ''}</span>
                 )}
               </p>
               <div className="flex items-center gap-1.5">
