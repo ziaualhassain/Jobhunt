@@ -254,8 +254,52 @@ async function getDefaultCareerJobs(filters) {
 //
 // When no search query is present (browsing) the score is purely based on
 // data completeness so richer jobs still surface ahead of stub entries.
+// ── Experience helpers ────────────────────────────────────────────────────────
+
+const BACKEND_LEVEL_MAP = {
+  Junior: 1, 'Mid-level': 2, Senior: 3, Lead: 4, Staff: 5, Principal: 6,
+};
+
+function parseRequiredYears(text) {
+  const t = (text || '').toLowerCase();
+  const patterns = [
+    /\bat\s+least\s+(\d+)\s+years?/,
+    /\bminimum\s+(?:of\s+)?(\d+)\s+years?/,
+    /(\d+)\s*\+\s*years?\s+(?:of\s+)?(?:experience|exp)/,
+    /(\d+)\s*\+\s*years?/,
+    /(\d+)\s*[-–]\s*\d+\s*years?\s+(?:of\s+)?(?:experience|exp)/,
+    /(\d+)\s*[-–]\s*\d+\s*years?/,
+    /(\d+)\s+years?\s+(?:of\s+)?(?:professional\s+)?(?:experience|exp)/,
+  ];
+  for (const pattern of patterns) {
+    const m = t.match(pattern);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
+}
+
+function detectBackendJobLevel(title, desc) {
+  const t = `${title} ${desc}`.toLowerCase();
+  if (/\b(principal|distinguished|fellow)\b/.test(t))                               return 6;
+  if (/\bstaff\s+(engineer|developer|dev)\b/.test(t))                               return 5;
+  if (/\b(tech\s*lead|lead\s+(engineer|developer|dev)|engineering\s+lead)\b/.test(t)) return 4;
+  if (/\bsenior\b/.test(t))                                                         return 3;
+  if (/\b(mid[- ]level|intermediate)\b/.test(t))                                    return 2;
+  if (/\b(junior|entry[- ]level|graduate|intern)\b/.test(t))                        return 1;
+  const yrs = parseRequiredYears(desc);
+  if (yrs !== null) {
+    if (yrs >= 10) return 6;
+    if (yrs >= 7)  return 5;
+    if (yrs >= 5)  return 4;
+    if (yrs >= 3)  return 3;
+    if (yrs >= 1)  return 2;
+    return 1;
+  }
+  return 3;
+}
+
 function rankJobs(jobs, filters) {
-  const { keywords = [], tags = [] } = filters;
+  const { keywords = [], tags = [], experienceLevel = '' } = filters;
   const signals = [...new Set([...keywords, ...tags])]
     .filter(Boolean)
     .flatMap(s =>
@@ -264,9 +308,10 @@ function rankJobs(jobs, filters) {
 
   // Pre-compile word-boundary regexes once per signal
   const signalRegexes = signals.map(w => ({
-    w,
     re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
   }));
+
+  const filterLevel = BACKEND_LEVEL_MAP[experienceLevel] ?? null;
 
   return jobs
     .map(job => {
@@ -275,6 +320,7 @@ function rankJobs(jobs, filters) {
       const jobTags = job.tags        || '';
       const desc    = job.description || '';
 
+      // ── Keyword relevance ─────────────────────────────────────────────────
       let signalsMatched = 0;
       for (const { re } of signalRegexes) {
         const inTitle = re.test(title);
@@ -286,17 +332,24 @@ function rankJobs(jobs, filters) {
         if (inDesc)  score += 5;
       }
 
-      // Coverage multiplier: matching more of the searched terms is exponentially better.
-      // e.g. 4/4 signals → ×2.0, 3/4 → ×1.5, 2/4 → ×1.2, 1/4 → ×1.0
+      // Coverage multiplier: all 4 signals matched → ×2.0, 1/4 → ×1.25
       if (signals.length > 0) {
-        const coverage = signalsMatched / signals.length;
-        score = Math.round(score * (1 + coverage));
+        score = Math.round(score * (1 + signalsMatched / signals.length));
       }
 
-      // Completeness bonuses (source-neutral)
+      // ── Experience level penalty ──────────────────────────────────────────
+      // Penalise when the job's seniority clearly mismatches the filter.
+      // e.g. Junior searching → Senior role loses 60 pts; Senior searching → intern role loses 30 pts.
+      if (filterLevel !== null) {
+        const jobLevel = detectBackendJobLevel(title, desc);
+        const diff = Math.abs(jobLevel - filterLevel);
+        if (diff >= 2) score -= diff * 25;   // 2 levels off: -50, 3: -75, etc.
+      }
+
+      // ── Completeness bonuses (source-neutral) ─────────────────────────────
       const tagCount = jobTags ? jobTags.split(',').filter(t => t.trim()).length : 0;
       score += Math.min(tagCount * 4, 40);
-      if (job.salary)       score += 15;
+      if (job.salary)        score += 15;
       if (desc.length > 100) score += 10;
 
       return { ...job, _score: score };
