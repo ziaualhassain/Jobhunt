@@ -488,9 +488,13 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
   } = req.body;
 
   try {
-    // Confirm job exists and is active; also fetch skills for score computation
+    // Confirm job exists and is active; fetch details for tracker upsert too
     const { rows: job } = await pool.query(
-      'SELECT id, skills FROM jobhunter_jobs WHERE id = $1 AND is_active = TRUE',
+      `SELECT j.id, j.skills, j.title, j.salary, j.location, j.description, j.job_type,
+              COALESCE(u.company_name, '') AS company
+       FROM jobhunter_jobs j
+       JOIN users u ON u.id = j.recruiter_id
+       WHERE j.id = $1 AND j.is_active = TRUE`,
       [numericId]
     );
     if (!job[0]) return res.status(404).json({ error: 'Job not found or inactive' });
@@ -518,6 +522,20 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
        applicantSkills || null, skillMatchScore]
     );
     if (!rows[0]) return res.status(409).json({ error: 'Already applied' });
+
+    // Mirror application into the user's tracker (applications table)
+    const jd = job[0];
+    await pool.query(
+      `INSERT INTO applications
+         (user_id, job_id, title, company, location, description, salary, job_type,
+          source, tags, status, applied_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'JobHunters', $9, 'applied', CURRENT_DATE)
+       ON CONFLICT (user_id, job_id) DO NOTHING`,
+      [req.user.id, `jh-${numericId}`, jd.title, jd.company,
+       jd.location || 'Remote', jd.description, jd.salary,
+       jd.job_type, jd.skills]
+    );
+
     res.status(201).json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

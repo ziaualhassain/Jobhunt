@@ -17,7 +17,16 @@ router.use(async (req, res, next) => {
   }
 });
 
-const VALID_APP_STATUSES = ['Applied', 'Reviewing', 'Shortlisted', 'Rejected', 'Hired'];
+const VALID_APP_STATUSES = ['Applied', 'Phone Screen', 'Technical', 'Final Interview', 'Offer', 'Rejected'];
+
+const RECRUITER_TO_TRACKER = {
+  'Applied':        'applied',
+  'Phone Screen':   'phone_screen',
+  'Technical':      'technical',
+  'Final Interview':'final_interview',
+  'Offer':          'offer',
+  'Rejected':       'rejected',
+};
 
 // GET /api/recruiter/jobs — list my posted jobs
 router.get('/jobs', async (req, res) => {
@@ -151,6 +160,19 @@ router.patch('/jobs/:jobId/applicants/:userId', async (req, res) => {
       [status ?? null, recruiterNotes ?? null, req.params.jobId, req.params.userId]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Application not found' });
+
+    // Mirror status into the user's applications tracker table
+    if (status) {
+      const trackerStatus = RECRUITER_TO_TRACKER[status];
+      if (trackerStatus) {
+        await pool.query(
+          `UPDATE applications SET status = $1, updated_at = NOW()
+           WHERE user_id = $2 AND job_id = $3`,
+          [trackerStatus, req.params.userId, `jh-${req.params.jobId}`]
+        );
+      }
+    }
+
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });

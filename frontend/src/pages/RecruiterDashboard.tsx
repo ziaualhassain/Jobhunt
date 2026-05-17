@@ -14,15 +14,16 @@ import { useAuth } from '../context/AuthContext'
 
 const JOB_TYPES   = ['Full-time', 'Part-time', 'Contract', 'Remote']
 const EXP_LEVELS  = ['Junior', 'Mid-level', 'Senior', 'Lead']
-const PIPELINE     = ['Applied', 'Reviewing', 'Shortlisted', 'Rejected', 'Hired'] as const
+const PIPELINE     = ['Applied', 'Phone Screen', 'Technical', 'Final Interview', 'Offer', 'Rejected'] as const
 type PipelineStatus = typeof PIPELINE[number] | 'All'
 
 const STATUS_COLORS: Record<string, string> = {
-  Applied:     'bg-slate-700/80 text-slate-300',
-  Reviewing:   'bg-blue-500/20 text-blue-300',
-  Shortlisted: 'bg-brand-500/20 text-brand-300',
-  Rejected:    'bg-red-500/20 text-red-400',
-  Hired:       'bg-emerald-500/20 text-emerald-400',
+  'Applied':         'bg-slate-700/80 text-slate-300',
+  'Phone Screen':    'bg-blue-500/20 text-blue-300',
+  'Technical':       'bg-orange-500/20 text-orange-300',
+  'Final Interview': 'bg-yellow-500/20 text-yellow-300',
+  'Offer':           'bg-emerald-500/20 text-emerald-400',
+  'Rejected':        'bg-red-500/20 text-red-400',
 }
 
 const MATCH_COLOR = (score: number) =>
