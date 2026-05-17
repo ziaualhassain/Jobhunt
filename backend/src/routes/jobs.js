@@ -39,16 +39,19 @@ async function getTheirStackJobs(filters) {
     conditions.push(`region = $${params.length}`);
   }
 
-  // Unified relevance: keywords OR tags — any signal match qualifies the row
+  // Unified relevance: keywords OR tags — any signal match qualifies the row.
+  // Uses PostgreSQL word-boundary regex (~*) so 'java' doesn't match 'javascript'.
   const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
   if (allSignals.length > 0) {
     const signalClauses = allSignals.flatMap(signal => {
       const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
       if (words.length === 0) return [];
       return words.map(w => {
-        params.push(`%${w}%`);
+        // Escape regex special chars in the word
+        const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        params.push(`\\m${escaped}\\M`);  // \m = word start, \M = word end in PG regex
         const i = params.length;
-        return `(LOWER(title) LIKE $${i} OR LOWER(company) LIKE $${i} OR LOWER(tags) LIKE $${i} OR LOWER(description) LIKE $${i})`;
+        return `(LOWER(title) ~* $${i} OR LOWER(company) ~* $${i} OR LOWER(tags) ~* $${i} OR LOWER(description) ~* $${i})`;
       });
     });
     if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
@@ -110,9 +113,10 @@ async function getCareerPageJobs(userId, filters) {
     const clauses = allSignals.flatMap(signal => {
       const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
       return words.map(w => {
-        params.push(`%${w}%`);
+        const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        params.push(`\\m${escaped}\\M`);
         const i = params.length;
-        return `(LOWER(${alias}.title) LIKE $${i} OR LOWER(${alias}.tags) LIKE $${i} OR LOWER(${alias}.description) LIKE $${i})`;
+        return `(LOWER(${alias}.title) ~* $${i} OR LOWER(${alias}.tags) ~* $${i} OR LOWER(${alias}.description) ~* $${i})`;
       });
     });
     return clauses.length > 0 ? `(${clauses.join(' OR ')})` : null;
@@ -194,9 +198,10 @@ async function getDefaultCareerJobs(filters) {
     const signalClauses = allSignals.flatMap(signal => {
       const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
       return words.map(w => {
-        params.push(`%${w}%`);
+        const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        params.push(`\\m${escaped}\\M`);
         const i = params.length;
-        return `(LOWER(dc.title) LIKE $${i} OR LOWER(dc.tags) LIKE $${i} OR LOWER(dc.description) LIKE $${i})`;
+        return `(LOWER(dc.title) ~* $${i} OR LOWER(dc.tags) ~* $${i} OR LOWER(dc.description) ~* $${i})`;
       });
     });
     if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
@@ -257,24 +262,42 @@ function rankJobs(jobs, filters) {
       s.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w))
     );
 
+  // Pre-compile word-boundary regexes once per signal
+  const signalRegexes = signals.map(w => ({
+    w,
+    re: new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+  }));
+
   return jobs
     .map(job => {
       let score = 0;
-      const title   = (job.title       || '').toLowerCase();
-      const jobTags = (job.tags        || '').toLowerCase();
-      const desc    = (job.description || '').toLowerCase();
+      const title   = job.title       || '';
+      const jobTags = job.tags        || '';
+      const desc    = job.description || '';
 
-      for (const signal of signals) {
-        if (title.includes(signal))   score += 40;
-        if (jobTags.includes(signal)) score += 25;
-        if (desc.includes(signal))    score += 5;
+      let signalsMatched = 0;
+      for (const { re } of signalRegexes) {
+        const inTitle = re.test(title);
+        const inTags  = re.test(jobTags);
+        const inDesc  = re.test(desc);
+        if (inTitle || inTags || inDesc) signalsMatched++;
+        if (inTitle) score += 40;
+        if (inTags)  score += 25;
+        if (inDesc)  score += 5;
+      }
+
+      // Coverage multiplier: matching more of the searched terms is exponentially better.
+      // e.g. 4/4 signals → ×2.0, 3/4 → ×1.5, 2/4 → ×1.2, 1/4 → ×1.0
+      if (signals.length > 0) {
+        const coverage = signalsMatched / signals.length;
+        score = Math.round(score * (1 + coverage));
       }
 
       // Completeness bonuses (source-neutral)
-      const tagCount = job.tags ? job.tags.split(',').filter(t => t.trim()).length : 0;
+      const tagCount = jobTags ? jobTags.split(',').filter(t => t.trim()).length : 0;
       score += Math.min(tagCount * 4, 40);
-      if (job.salary)                          score += 15;
-      if (desc.length > 100)                   score += 10;
+      if (job.salary)       score += 15;
+      if (desc.length > 100) score += 10;
 
       return { ...job, _score: score };
     })
