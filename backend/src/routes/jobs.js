@@ -447,15 +447,15 @@ router.post('/deep-score', async (req, res) => {
 
     let result;
 
-    if (shouldUseApi()) {
-      result = await deepScoreWithClaude(analysis, job);
-    } else {
-      try {
-        await axios.get(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { timeout: 2000 });
-        result = await deepScoreWithOllama(analysis, job);
-      } catch {
-        return res.status(503).json({ error: 'No AI backend available. Set USE_API=true with ANTHROPIC_API_KEY, or run Ollama locally.' });
+    // Try Ollama first (free, local), fall back to Claude
+    try {
+      await axios.get(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { timeout: 2000 });
+      result = await deepScoreWithOllama(analysis, job);
+    } catch {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return res.status(503).json({ error: 'No AI backend available. Run Ollama locally or set ANTHROPIC_API_KEY.' });
       }
+      result = await deepScoreWithClaude(analysis, job);
     }
 
     res.json(result);

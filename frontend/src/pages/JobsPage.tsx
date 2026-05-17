@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { Loader2, AlertCircle, Layers, SortAsc, Sparkles, Search, UserCog, MapPin, X } from 'lucide-react'
 import SearchForm, { REGIONS } from '../components/SearchForm'
+import { PERCENTAGE_ENABLE } from '../lib/config'
 import JobCard from '../components/JobCard'
 import ResumeUpload from '../components/ResumeUpload'
 import { searchJobs, saveApplication, getApplications, getProfile, updateProfile } from '../lib/api'
 import type { ResumeAnalysis } from '../lib/api'
 import type { Job, SearchFilters } from '../types'
+import { scoreJob } from '../lib/jobScorer'
+import type { FitScore } from '../lib/jobScorer'
 
-type SortKey = 'default' | 'title' | 'company' | 'source'
+type SortKey = 'default' | 'title' | 'company' | 'source' | 'match'
 type Tab = 'curated' | 'browse'
 
 // ISO 3166-1 alpha-2 → our region tags
@@ -24,7 +27,15 @@ const COUNTRY_TO_REGION: Record<string, string> = {
   RO: 'Europe', HU: 'Europe', GR: 'Europe',
 }
 
-function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string>; onSave: (j: Job) => void }) {
+function JobGrid({
+  jobs, savedIds, onSave, scores, resumeAnalysis,
+}: {
+  jobs: Job[]
+  savedIds: Set<string>
+  onSave: (j: Job) => void
+  scores?: Map<string, FitScore>
+  resumeAnalysis?: ResumeAnalysis | null
+}) {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       {jobs.map(job => (
@@ -33,6 +44,8 @@ function JobGrid({ jobs, savedIds, onSave }: { jobs: Job[]; savedIds: Set<string
           job={job}
           isSaved={savedIds.has(job.job_id)}
           onSave={onSave}
+          fitScore={scores?.get(job.job_id)}
+          resumeAnalysis={resumeAnalysis}
         />
       ))}
     </div>
@@ -63,11 +76,11 @@ export default function JobsPage() {
   const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<Tab>('curated')
   const [filters, setFilters] = useState<Partial<SearchFilters> | null>(null)
-  const [sort, setSort] = useState<SortKey>('default')
+  const [sort, setSort] = useState<SortKey>(PERCENTAGE_ENABLE ? 'match' : 'default')
   const [toast, setToast] = useState<string | null>(null)
   const [searchKey, setSearchKey] = useState(0)
   const [resumeFilters, setResumeFilters] = useState<Partial<SearchFilters> | null>(null)
-  const restoredRef = useRef(false)
+  const [resumeAnalysis, setResumeAnalysis] = useState<ResumeAnalysis | null>(null)
 
   // ── IP geolocation ──────────────────────────────────────────────────────────
   const [detectedRegion, setDetectedRegion] = useState<string | null>(null)
@@ -117,33 +130,86 @@ export default function JobsPage() {
   const profileKeywords = profile?.preferences?.keywords ?? []
   const hasProfileData = profileInterests.length > 0 || profileKeywords.length > 0
 
-  // Map free-text profile location → normalised region tag
-  function deriveRegion(): string {
-    const loc = (profile?.preferences?.location ?? '').toLowerCase()
-    const isRemote = profile?.preferences?.remote ?? true
-    if (!loc && isRemote) return 'Remote'
-    if (loc.includes('remote')) return 'Remote'
-    if (loc.includes('india')) return 'India'
-    if (loc.includes('us') || loc.includes('usa') || loc.includes('united states') || loc.includes('america')) return 'US'
-    if (loc.includes('uk') || loc.includes('united kingdom') || loc.includes('london') || loc.includes('england')) return 'UK'
-    if (loc.includes('uae') || loc.includes('dubai') || loc.includes('united arab')) return 'UAE'
-    if (loc.includes('canada') || loc.includes('toronto') || loc.includes('vancouver')) return 'Canada'
-    if (loc.includes('australia') || loc.includes('sydney') || loc.includes('melbourne')) return 'Australia'
-    if (loc.includes('europe') || loc.includes('germany') || loc.includes('france') || loc.includes('netherlands')) return 'Europe'
-    if (loc.includes('singapore')) return 'Singapore'
+  // Map years of experience → seniority label when user hasn't picked one explicitly
+  function deriveExperienceLevel(years: number): string {
+    if (years <= 2) return 'Junior'
+    if (years <= 5) return 'Mid-level'
+    if (years <= 9) return 'Senior'
+    if (years <= 14) return 'Lead'
+    return 'Staff'
+  }
+
+  const profileYears = profile?.preferences?.yearsOfExperience
+  const effectiveExperienceLevel = profile?.preferences?.experienceLevel ||
+    (profileYears != null ? deriveExperienceLevel(profileYears) : '')
+
+  // Pure country/region names that are NOT cities — don't pass as location filter
+  const PURE_REGIONS = new Set([
+    'remote', 'anywhere', 'worldwide', 'global', 'international',
+    'india', 'us', 'usa', 'united states', 'america',
+    'uk', 'united kingdom', 'uae', 'united arab emirates',
+    'canada', 'australia', 'europe', 'singapore',
+  ])
+
+  // Extract a city name from a free-text location, e.g.
+  // "Hyderabad, India" → "Hyderabad"   "India" → ""   "Remote" → ""
+  function extractCity(raw: string): string {
+    if (!raw) return ''
+    const city = raw.split(',')[0].trim()
+    return PURE_REGIONS.has(city.toLowerCase()) ? '' : city
+  }
+
+  // Map profile location → normalised region tag
+  function deriveRegion(loc: string): string {
+    const l = loc.toLowerCase()
+    if (l.includes('remote')) return 'Remote'
+    if (l.includes('india') || l.includes('bangalore') || l.includes('bengaluru') ||
+        l.includes('hyderabad') || l.includes('mumbai') || l.includes('delhi') ||
+        l.includes('pune') || l.includes('chennai') || l.includes('kolkata') ||
+        l.includes('noida') || l.includes('gurgaon') || l.includes('gurugram')) return 'India'
+    if (l.includes('us') || l.includes('usa') || l.includes('united states') || l.includes('america') ||
+        l.includes('new york') || l.includes('san francisco') || l.includes('seattle') ||
+        l.includes('boston') || l.includes('austin') || l.includes('chicago')) return 'US'
+    if (l.includes('uk') || l.includes('united kingdom') || l.includes('london') ||
+        l.includes('manchester') || l.includes('birmingham') || l.includes('edinburgh')) return 'UK'
+    if (l.includes('uae') || l.includes('dubai') || l.includes('abu dhabi') || l.includes('united arab')) return 'UAE'
+    if (l.includes('canada') || l.includes('toronto') || l.includes('vancouver') || l.includes('montreal')) return 'Canada'
+    if (l.includes('australia') || l.includes('sydney') || l.includes('melbourne') || l.includes('brisbane')) return 'Australia'
+    if (l.includes('europe') || l.includes('germany') || l.includes('berlin') || l.includes('france') ||
+        l.includes('paris') || l.includes('netherlands') || l.includes('amsterdam') ||
+        l.includes('sweden') || l.includes('switzerland') || l.includes('spain') || l.includes('poland')) return 'Europe'
+    if (l.includes('singapore')) return 'Singapore'
     return ''
   }
 
-  const profileRegion = profile ? deriveRegion() : ''
+  const rawProfileLocation = profile?.preferences?.location ?? ''
+  const profileRegion = profile ? deriveRegion(rawProfileLocation) : ''
+  const profileCity   = profile ? extractCity(rawProfileLocation) : ''
+  const profileRemote = profile?.preferences?.remote ?? true
 
   const curatedFilters: Partial<SearchFilters> = {
-    tags: profileInterests,
-    keywords: profileKeywords,
-    experienceLevel: profile?.preferences?.experienceLevel ?? '',
-    jobType: profile?.preferences?.jobType ?? '',
-    region: profileRegion,
-    remote: profile?.preferences?.remote ?? true,
+    tags:            profileInterests,
+    keywords:        profileKeywords,
+    experienceLevel: effectiveExperienceLevel,
+    jobType:         profile?.preferences?.jobType ?? '',
+    location:        profileCity,   // city-level filter (e.g. "Hyderabad")
+    region:          profileRegion, // country-level filter (e.g. "India")
+    remote:          profileRemote,
   }
+
+  // Build a ResumeAnalysis-compatible object from profile data so fit scores
+  // show on For You cards even when no resume has been uploaded.
+  const ROLE_TAGS = new Set(['Frontend', 'Backend', 'Full Stack', 'DevOps', 'Mobile', 'Data Engineer', 'ML / AI', 'QA', 'Platform Engineer', 'SRE'])
+  const CLOUD_TAGS = new Set(['AWS', 'Azure', 'GCP'])
+  const profileAsAnalysis: ResumeAnalysis | null = profile && hasProfileData ? {
+    skills: [...profileInterests, ...profileKeywords],
+    experienceLevel: effectiveExperienceLevel || 'Mid-level',
+    yearsOfExperience: profileYears ?? 0,
+    jobTitles: profileInterests.filter(i => ROLE_TAGS.has(i)),
+    searchKeywords: profileKeywords,
+    cloudPlatforms: profileInterests.filter(i => CLOUD_TAGS.has(i)),
+    summary: '',
+  } : null
 
   const { data: curatedData, isLoading: curatedLoading } = useQuery({
     queryKey: ['jobs', 'curated', curatedFilters],
@@ -152,20 +218,8 @@ export default function JobsPage() {
   })
 
   // ── Browse: user-controlled search ─────────────────────────────────────────
-  useEffect(() => {
-    if (!restoredRef.current && profile?.preferences?.lastSearch) {
-      restoredRef.current = true
-      setFilters(profile.preferences.lastSearch)
-      setSearchKey(k => k + 1)
-    }
-  }, [profile])
 
-  const browseFilters: Partial<SearchFilters> = filters ?? {
-    tags: profileInterests,
-    keywords: profileKeywords,
-    experienceLevel: profile?.preferences?.experienceLevel ?? '',
-    remote: profile?.preferences?.remote ?? true,
-  }
+  const browseFilters: Partial<SearchFilters> = filters ?? {}
 
   const { data: browseData, isLoading: browseLoading, isError, error } = useQuery({
     queryKey: ['jobs', browseFilters],
@@ -194,7 +248,6 @@ export default function JobsPage() {
   function handleSearch(f: Partial<SearchFilters>) {
     setFilters(f)
     setResumeFilters(null)
-    updateProfile({ preferences: { lastSearch: f as SearchFilters } }).catch(() => {})
   }
 
   function handleClear() {
@@ -203,6 +256,7 @@ export default function JobsPage() {
   }
 
   function handleResumeAnalyzed(analysis: ResumeAnalysis) {
+    setResumeAnalysis(analysis)
     const f: Partial<SearchFilters> = {
       keywords: analysis.searchKeywords,
       tags: [],
@@ -215,18 +269,45 @@ export default function JobsPage() {
     showToast(`Searching ${analysis.searchKeywords.length} keywords from your resume`)
   }
 
-  const browseJobs = [...(browseData?.jobs ?? [])]
-  if (sort === 'title') browseJobs.sort((a, b) => a.title.localeCompare(b.title))
-  else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
-  else if (sort === 'source') browseJobs.sort((a, b) => a.source.localeCompare(b.source))
+  // ── Fit scores ───────────────────────────────────────────────────────────────
+  // Resume upload takes priority; fall back to profile-derived analysis so For
+  // You cards show badges without requiring a resume.
+  const effectiveAnalysis = resumeAnalysis ?? profileAsAnalysis
+  const fitScores = useMemo<Map<string, FitScore>>(() => {
+    if (!effectiveAnalysis) return new Map()
+    const allJobs = [...(browseData?.jobs ?? []), ...(curatedData?.jobs ?? [])]
+    return new Map(allJobs.map(job => [job.job_id, scoreJob(job, effectiveAnalysis)]))
+  }, [effectiveAnalysis, browseData, curatedData])
 
-  const curatedJobs = curatedData?.jobs ?? []
+  const browseJobs = [...(browseData?.jobs ?? [])]
+  if (sort === 'title')   browseJobs.sort((a, b) => a.title.localeCompare(b.title))
+  else if (sort === 'company') browseJobs.sort((a, b) => a.company.localeCompare(b.company))
+  else if (sort === 'source')  browseJobs.sort((a, b) => a.source.localeCompare(b.source))
+  else if (sort === 'match' || (PERCENTAGE_ENABLE && effectiveAnalysis && sort === 'default'))
+    browseJobs.sort((a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0))
+
+  // For You always sorted highest → lowest match when percentage feature is on
+  const curatedJobs = PERCENTAGE_ENABLE && effectiveAnalysis
+    ? [...(curatedData?.jobs ?? [])].sort(
+        (a, b) => (fitScores.get(b.job_id)?.overall ?? 0) - (fitScores.get(a.job_id)?.overall ?? 0)
+      )
+    : (curatedData?.jobs ?? [])
 
   // Chips showing which profile attributes drive the curated feed
+  const expChip = effectiveExperienceLevel
+    ? profileYears != null && !profile?.preferences?.experienceLevel
+      ? `${effectiveExperienceLevel} (${profileYears}y)`
+      : effectiveExperienceLevel
+    : null
   const matchChips: string[] = [
-    ...(profileRegion ? [profileRegion] : []),
+    // Location: show city if set, otherwise region, with remote suffix
+    ...(profileCity
+      ? [`📍 ${profileCity}${profileRemote ? ' + Remote' : ''}`]
+      : profileRegion
+        ? [profileRegion === 'Remote' ? '🌐 Remote' : `${profileRegion}${profileRemote ? ' + Remote' : ''}`]
+        : profileRemote ? ['🌐 Remote'] : []),
     ...profileInterests.slice(0, 4),
-    ...(profile?.preferences?.experienceLevel ? [profile.preferences.experienceLevel] : []),
+    ...(expChip ? [expChip] : []),
   ]
 
   const detectedRegionMeta = REGIONS.find(r => r.value === detectedRegion)
@@ -361,7 +442,7 @@ export default function JobsPage() {
                   <p className="text-sm text-slate-500">
                     <span className="text-slate-200 font-medium">{curatedData?.total ?? curatedJobs.length}</span> jobs curated for you
                   </p>
-                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+                  <JobGrid jobs={curatedJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
                 </>
               )}
             </>
@@ -412,6 +493,7 @@ export default function JobsPage() {
                   value={sort}
                   onChange={e => setSort(e.target.value as SortKey)}
                 >
+                  {PERCENTAGE_ENABLE && effectiveAnalysis && <option value="match">Sort: Best Match</option>}
                   <option value="default">Sort: Default</option>
                   <option value="title">Sort: Title</option>
                   <option value="company">Sort: Company</option>
@@ -444,7 +526,7 @@ export default function JobsPage() {
           )}
 
           {!browseLoading && browseJobs.length > 0 && (
-            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} />
+            <JobGrid jobs={browseJobs} savedIds={savedIds} onSave={j => saveMutation.mutate(j)} scores={fitScores} resumeAnalysis={effectiveAnalysis} />
           )}
         </div>
       )}
