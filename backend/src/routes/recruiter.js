@@ -23,7 +23,11 @@ const VALID_APP_STATUSES = ['Applied', 'Reviewing', 'Shortlisted', 'Rejected', '
 router.get('/jobs', async (req, res) => {
   try {
     const { rows } = await pool.query(
-      'SELECT * FROM jobhunter_jobs WHERE recruiter_id = $1 ORDER BY created_at DESC',
+      `SELECT j.*,
+              (SELECT COUNT(*)::int FROM job_applications ja WHERE ja.job_id = j.id) AS applicant_count
+       FROM jobhunter_jobs j
+       WHERE j.recruiter_id = $1
+       ORDER BY j.created_at DESC`,
       [req.user.id]
     );
     res.json(rows);
@@ -107,11 +111,13 @@ router.get('/jobs/:id/applicants', async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT ja.id, ja.job_id, ja.user_id, ja.cover_letter, ja.status, ja.applied_at, ja.updated_at,
+              ja.phone, ja.linkedin_url, ja.portfolio_url, ja.current_role, ja.experience_years,
+              ja.expected_salary, ja.notice_period, ja.applicant_skills, ja.recruiter_notes, ja.skill_match_score,
               u.name AS applicant_name, u.email AS applicant_email
        FROM job_applications ja
        JOIN users u ON u.id = ja.user_id
        WHERE ja.job_id = $1
-       ORDER BY ja.applied_at DESC`,
+       ORDER BY ja.skill_match_score DESC, ja.applied_at DESC`,
       [req.params.id]
     );
     res.json(rows);
@@ -120,10 +126,11 @@ router.get('/jobs/:id/applicants', async (req, res) => {
   }
 });
 
-// PATCH /api/recruiter/jobs/:jobId/applicants/:userId — update applicant status
+// PATCH /api/recruiter/jobs/:jobId/applicants/:userId — update applicant status and/or recruiter notes
 router.patch('/jobs/:jobId/applicants/:userId', async (req, res) => {
-  const { status } = req.body;
-  if (!VALID_APP_STATUSES.includes(status))
+  const { status, recruiterNotes } = req.body;
+
+  if (status !== undefined && !VALID_APP_STATUSES.includes(status))
     return res.status(400).json({ error: `Invalid status. Valid: ${VALID_APP_STATUSES.join(', ')}` });
 
   try {
@@ -135,9 +142,13 @@ router.patch('/jobs/:jobId/applicants/:userId', async (req, res) => {
     if (!job[0]) return res.status(404).json({ error: 'Not found' });
 
     const { rows } = await pool.query(
-      `UPDATE job_applications SET status = $1, updated_at = NOW()
-       WHERE job_id = $2 AND user_id = $3 RETURNING *`,
-      [status, req.params.jobId, req.params.userId]
+      `UPDATE job_applications
+       SET status         = COALESCE($1, status),
+           recruiter_notes = COALESCE($2, recruiter_notes),
+           updated_at     = NOW()
+       WHERE job_id = $3 AND user_id = $4
+       RETURNING *`,
+      [status ?? null, recruiterNotes ?? null, req.params.jobId, req.params.userId]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Application not found' });
     res.json(rows[0]);

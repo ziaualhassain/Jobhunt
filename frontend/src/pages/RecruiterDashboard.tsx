@@ -2,397 +2,457 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Briefcase, Plus, X, Loader2, AlertCircle, Users, ChevronDown, ChevronUp,
-  ToggleLeft, ToggleRight, CheckCircle2, Clock, Building2, MapPin,
+  ToggleLeft, ToggleRight, CheckCircle2, Clock, Building2, MapPin, Phone,
+  Linkedin, Globe, DollarSign, Star, FileText, StickyNote, User,
 } from 'lucide-react'
 import {
-  getMyRecruiterJobs,
-  postRecruiterJob,
-  updateRecruiterJob,
-  getJobApplicants,
-  updateApplicantStatus,
+  getMyRecruiterJobs, postRecruiterJob, updateRecruiterJob,
+  getJobApplicants, updateApplicantStatus,
 } from '../lib/api'
 import type { RecruiterJob, Applicant } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 
-const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Remote']
-const EXP_LEVELS = ['Junior', 'Mid-level', 'Senior', 'Lead']
-const APPLICANT_STATUSES = ['Applied', 'Reviewing', 'Shortlisted', 'Rejected', 'Hired']
+const JOB_TYPES   = ['Full-time', 'Part-time', 'Contract', 'Remote']
+const EXP_LEVELS  = ['Junior', 'Mid-level', 'Senior', 'Lead']
+const PIPELINE     = ['Applied', 'Reviewing', 'Shortlisted', 'Rejected', 'Hired'] as const
+type PipelineStatus = typeof PIPELINE[number] | 'All'
 
 const STATUS_COLORS: Record<string, string> = {
-  Applied:     'bg-slate-700 text-slate-300',
+  Applied:     'bg-slate-700/80 text-slate-300',
   Reviewing:   'bg-blue-500/20 text-blue-300',
   Shortlisted: 'bg-brand-500/20 text-brand-300',
   Rejected:    'bg-red-500/20 text-red-400',
   Hired:       'bg-emerald-500/20 text-emerald-400',
 }
 
-function SkillChips({ raw }: { raw: string }) {
+const MATCH_COLOR = (score: number) =>
+  score >= 70 ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
+  : score >= 40 ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30'
+  : 'text-slate-400 bg-slate-700/50 border-slate-600'
+
+function SkillChips({ raw, highlight = '' }: { raw: string; highlight?: string }) {
+  const jobSkills = highlight.toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
   const chips = raw.split(',').map(s => s.trim()).filter(Boolean)
   if (!chips.length) return null
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
-      {chips.map(chip => (
-        <span key={chip} className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">{chip}</span>
-      ))}
+    <div className="flex flex-wrap gap-1">
+      {chips.map(chip => {
+        const matched = jobSkills.length > 0 && jobSkills.some(j => chip.toLowerCase().includes(j) || j.includes(chip.toLowerCase()))
+        return (
+          <span
+            key={chip}
+            className={`badge text-[10px] border ${matched ? 'bg-brand-500/20 text-brand-300 border-brand-500/40' : 'bg-slate-800 text-slate-400 border-slate-700'}`}
+          >
+            {chip}
+          </span>
+        )
+      })}
     </div>
   )
 }
 
-interface PostJobFormProps {
-  onClose: () => void
-}
+// ── Post Job Form ─────────────────────────────────────────────────────────────
 
-function PostJobForm({ onClose }: PostJobFormProps) {
+function PostJobForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [location, setLocation] = useState('')
   const [jobType, setJobType] = useState(JOB_TYPES[0])
-  const [experienceLevel, setExperienceLevel] = useState(EXP_LEVELS[0])
+  const [experienceLevel, setExperienceLevel] = useState(EXP_LEVELS[1])
   const [skills, setSkills] = useState('')
   const [salary, setSalary] = useState('')
   const [error, setError] = useState('')
 
   const mutation = useMutation({
     mutationFn: () => postRecruiterJob({ title, description, location, jobType, experienceLevel, skills, salary }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['recruiter-jobs'] })
-      onClose()
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['recruiter-jobs'] }); onClose() },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { error?: string } } }
       setError(e.response?.data?.error ?? 'Failed to post job')
     },
   })
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError('')
-    mutation.mutate()
-  }
-
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-slate-100 flex items-center gap-2">
-          <Plus size={16} className="text-brand-400" />
-          Post New Job
+          <Plus size={16} className="text-brand-400" />Post New Job
         </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-        >
+        <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800">
           <X size={14} />
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
-        <input
-          type="text"
-          className="input w-full"
-          placeholder="Job Title"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          required
-          autoFocus
-        />
-
-        <textarea
-          className="input w-full min-h-[120px] resize-y"
-          placeholder="Job description…"
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          required
-        />
-
-        <input
-          type="text"
-          className="input w-full"
-          placeholder="Location (e.g. Remote, New York, London)"
-          value={location}
-          onChange={e => setLocation(e.target.value)}
-          required
-        />
+      <form onSubmit={e => { e.preventDefault(); setError(''); mutation.mutate() }} className="space-y-3">
+        <input className="input w-full" placeholder="Job Title *" value={title} onChange={e => setTitle(e.target.value)} required autoFocus />
+        <textarea className="input w-full min-h-[110px] resize-y" placeholder="Job description — responsibilities, requirements, nice-to-haves…" value={description} onChange={e => setDescription(e.target.value)} required />
+        <input className="input w-full" placeholder="Location (e.g. Remote, Bangalore, New York) *" value={location} onChange={e => setLocation(e.target.value)} required />
 
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1">
             <label className="text-xs text-slate-500">Job Type</label>
-            <select
-              className="input w-full"
-              value={jobType}
-              onChange={e => setJobType(e.target.value)}
-            >
-              {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            <select className="input w-full" value={jobType} onChange={e => setJobType(e.target.value)}>
+              {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
             </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-slate-500">Experience Level</label>
-            <select
-              className="input w-full"
-              value={experienceLevel}
-              onChange={e => setExperienceLevel(e.target.value)}
-            >
-              {EXP_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+            <select className="input w-full" value={experienceLevel} onChange={e => setExperienceLevel(e.target.value)}>
+              {EXP_LEVELS.map(l => <option key={l}>{l}</option>)}
             </select>
           </div>
         </div>
 
         <div className="space-y-1">
           <label className="text-xs text-slate-500">Required Skills (comma-separated)</label>
-          <input
-            type="text"
-            className="input w-full"
-            placeholder="e.g. React, TypeScript, Node.js"
-            value={skills}
-            onChange={e => setSkills(e.target.value)}
-          />
+          <input className="input w-full" placeholder="e.g. React, TypeScript, Node.js, PostgreSQL" value={skills} onChange={e => setSkills(e.target.value)} />
           {skills && <SkillChips raw={skills} />}
         </div>
 
-        <input
-          type="text"
-          className="input w-full"
-          placeholder="Salary (optional, e.g. $80k–$120k)"
-          value={salary}
-          onChange={e => setSalary(e.target.value)}
-        />
+        <input className="input w-full" placeholder="Salary range (optional — e.g. $80k–$120k, ₹12–18 LPA)" value={salary} onChange={e => setSalary(e.target.value)} />
 
         {error && (
           <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg p-3">
-            <AlertCircle size={14} className="shrink-0" />
-            {error}
+            <AlertCircle size={14} className="shrink-0" />{error}
           </div>
         )}
 
         <div className="flex items-center gap-2 pt-1">
-          <button
-            type="submit"
-            className="btn-primary flex items-center gap-2"
-            disabled={mutation.isPending}
-          >
+          <button type="submit" className="btn-primary flex items-center gap-2" disabled={mutation.isPending}>
             {mutation.isPending && <Loader2 size={14} className="animate-spin" />}
             {mutation.isPending ? 'Posting…' : 'Post Job'}
           </button>
-          <button type="button" onClick={onClose} className="btn-secondary">
-            Cancel
-          </button>
+          <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
         </div>
       </form>
     </div>
   )
 }
 
-interface ApplicantPanelProps {
+// ── Applicant Card ────────────────────────────────────────────────────────────
+
+function ApplicantCard({ applicant, job, onUpdate }: {
+  applicant: Applicant
   job: RecruiterJob
-  onClose: () => void
+  onUpdate: (userId: number, updates: { status?: string; recruiterNotes?: string }) => void
+}) {
+  const [showCover, setShowCover] = useState(false)
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notes, setNotes] = useState(applicant.recruiter_notes ?? '')
+
+  const initials = (applicant.applicant_name ?? '?')
+    .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+
+  return (
+    <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
+      {/* Header row */}
+      <div className="flex items-start gap-3">
+        {/* Avatar */}
+        <div className="w-9 h-9 rounded-full bg-brand-500/20 border border-brand-500/30 flex items-center justify-center shrink-0 text-sm font-bold text-brand-300">
+          {initials}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">{applicant.applicant_name}</p>
+              <p className="text-xs text-slate-500">{applicant.applicant_email}</p>
+            </div>
+
+            {/* Match score */}
+            {applicant.skill_match_score > 0 && (
+              <span className={`badge border text-[10px] font-semibold shrink-0 ${MATCH_COLOR(applicant.skill_match_score)}`}>
+                <Star size={9} className="inline mr-0.5" />
+                {applicant.skill_match_score}% match
+              </span>
+            )}
+          </div>
+
+          {/* Meta: current role, experience */}
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
+            {applicant.current_role && (
+              <span className="flex items-center gap-1"><User size={10} />{applicant.current_role}</span>
+            )}
+            {applicant.experience_years && (
+              <span className="flex items-center gap-1"><Briefcase size={10} />{applicant.experience_years} yrs</span>
+            )}
+            {applicant.expected_salary && (
+              <span className="flex items-center gap-1"><DollarSign size={10} />{applicant.expected_salary}</span>
+            )}
+            {applicant.notice_period && (
+              <span className="flex items-center gap-1"><Clock size={10} />{applicant.notice_period}</span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Contact links */}
+      {(applicant.phone || applicant.linkedin_url || applicant.portfolio_url) && (
+        <div className="flex flex-wrap gap-2 text-[11px]">
+          {applicant.phone && (
+            <a href={`tel:${applicant.phone}`} className="flex items-center gap-1 text-slate-400 hover:text-brand-400">
+              <Phone size={10} />{applicant.phone}
+            </a>
+          )}
+          {applicant.linkedin_url && (
+            <a href={applicant.linkedin_url.startsWith('http') ? applicant.linkedin_url : `https://${applicant.linkedin_url}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-slate-400 hover:text-brand-400">
+              <Linkedin size={10} />LinkedIn
+            </a>
+          )}
+          {applicant.portfolio_url && (
+            <a href={applicant.portfolio_url.startsWith('http') ? applicant.portfolio_url : `https://${applicant.portfolio_url}`}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-1 text-slate-400 hover:text-brand-400">
+              <Globe size={10} />Portfolio
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Skills */}
+      {applicant.applicant_skills && (
+        <SkillChips raw={applicant.applicant_skills} highlight={job.skills} />
+      )}
+
+      {/* Cover letter */}
+      {applicant.cover_letter && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowCover(v => !v)}
+            className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300"
+          >
+            <FileText size={10} />
+            {showCover ? <><ChevronUp size={10} />Hide cover letter</> : <><ChevronDown size={10} />Read cover letter</>}
+          </button>
+          {showCover && (
+            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
+              {applicant.cover_letter}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Recruiter notes */}
+      <div className="space-y-1.5">
+        <button
+          type="button"
+          onClick={() => setEditingNotes(v => !v)}
+          className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-300"
+        >
+          <StickyNote size={10} />
+          {editingNotes ? 'Close notes' : applicant.recruiter_notes ? 'Edit notes' : 'Add recruiter notes'}
+        </button>
+        {editingNotes && (
+          <div className="space-y-1.5">
+            <textarea
+              className="input w-full h-20 resize-none text-xs"
+              placeholder="Private notes about this candidate…"
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => { onUpdate(applicant.user_id, { recruiterNotes: notes }); setEditingNotes(false) }}
+              className="text-[11px] btn-primary px-3 py-1"
+            >
+              Save Notes
+            </button>
+          </div>
+        )}
+        {!editingNotes && applicant.recruiter_notes && (
+          <p className="text-[11px] text-slate-500 italic bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800">
+            {applicant.recruiter_notes}
+          </p>
+        )}
+      </div>
+
+      {/* Footer: date + status */}
+      <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-700/40">
+        <p className="text-[10px] text-slate-600 flex items-center gap-1">
+          <Clock size={9} />Applied {new Date(applicant.applied_at).toLocaleDateString()}
+        </p>
+        <select
+          value={applicant.status}
+          onChange={e => onUpdate(applicant.user_id, { status: e.target.value })}
+          className={`text-[11px] px-2 py-1 rounded-lg border-0 font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500 ${STATUS_COLORS[applicant.status] ?? 'bg-slate-700 text-slate-300'}`}
+        >
+          {PIPELINE.map(s => (
+            <option key={s} value={s} className="bg-slate-800 text-slate-200">{s}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
 }
 
-function ApplicantPanel({ job, onClose }: ApplicantPanelProps) {
+// ── Applicant Panel ───────────────────────────────────────────────────────────
+
+function ApplicantPanel({ job, onClose }: { job: RecruiterJob; onClose: () => void }) {
   const qc = useQueryClient()
-  const [expandedCovers, setExpandedCovers] = useState<Set<number>>(new Set())
+  const [tab, setTab] = useState<PipelineStatus>('All')
 
   const { data: applicants = [], isLoading, isError } = useQuery({
-    queryKey: ['applicants', job.job_id],
-    queryFn: () => getJobApplicants(job.job_id),
+    queryKey: ['applicants', job.id],
+    queryFn: () => getJobApplicants(String(job.id)),
   })
 
-  const statusMutation = useMutation({
-    mutationFn: ({ userId, status }: { userId: number; status: string }) =>
-      updateApplicantStatus(job.job_id, userId, status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['applicants', job.job_id] }),
+  const updateMutation = useMutation({
+    mutationFn: ({ userId, updates }: { userId: number; updates: { status?: string; recruiterNotes?: string } }) =>
+      updateApplicantStatus(String(job.id), userId, updates),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['applicants', job.id] }),
   })
 
-  function toggleCover(id: number) {
-    setExpandedCovers(prev => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
+  const counts = PIPELINE.reduce((acc, s) => {
+    acc[s] = applicants.filter(a => a.status === s).length
+    return acc
+  }, {} as Record<string, number>)
+
+  const visible = tab === 'All' ? applicants : applicants.filter(a => a.status === tab)
 
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-base font-semibold text-slate-100">Applicants</h2>
-          <p className="text-xs text-slate-500 mt-0.5">{job.title}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{job.title} · {applicants.length} total</p>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-        >
+        <button type="button" onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800">
           <X size={14} />
         </button>
       </div>
 
+      {/* Pipeline tabs */}
+      {applicants.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {(['All', ...PIPELINE] as PipelineStatus[]).map(s => {
+            const count = s === 'All' ? applicants.length : counts[s]
+            const active = tab === s
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setTab(s)}
+                className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                  active ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40'
+                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800 border border-transparent'
+                }`}
+              >
+                {s}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-brand-500/30' : 'bg-slate-800'}`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       {isLoading && (
         <div className="flex items-center gap-2 text-slate-500 py-4">
-          <Loader2 size={15} className="animate-spin" />
-          Loading applicants…
+          <Loader2 size={15} className="animate-spin" />Loading applicants…
         </div>
       )}
-
       {isError && (
         <div className="flex items-center gap-2 text-red-400 text-sm">
-          <AlertCircle size={14} />
-          Failed to load applicants
+          <AlertCircle size={14} />Failed to load applicants
         </div>
       )}
-
       {!isLoading && !isError && applicants.length === 0 && (
         <div className="text-center py-8 space-y-2">
           <Users size={32} className="mx-auto text-slate-700" />
           <p className="text-slate-500 text-sm">No applicants yet</p>
+          <p className="text-xs text-slate-600">Share the job link to attract candidates</p>
         </div>
       )}
-
-      {!isLoading && applicants.length > 0 && (
+      {!isLoading && visible.length > 0 && (
         <div className="space-y-3">
-          {applicants.map((applicant: Applicant) => (
-            <div key={applicant.id} className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-200 truncate">{applicant.name}</p>
-                  <p className="text-xs text-slate-500 truncate">{applicant.email}</p>
-                  <p className="text-[11px] text-slate-600 mt-0.5 flex items-center gap-1">
-                    <Clock size={10} />
-                    {new Date(applicant.applied_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <select
-                  value={applicant.status}
-                  onChange={e => statusMutation.mutate({ userId: applicant.user_id, status: e.target.value })}
-                  className={`text-xs px-2 py-1 rounded-lg border-0 font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-brand-500 ${STATUS_COLORS[applicant.status] ?? 'bg-slate-700 text-slate-300'}`}
-                >
-                  {APPLICANT_STATUSES.map(s => (
-                    <option key={s} value={s} className="bg-slate-800 text-slate-200">{s}</option>
-                  ))}
-                </select>
-              </div>
-
-              {applicant.cover_letter && (
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => toggleCover(applicant.id)}
-                    className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300 transition-colors"
-                  >
-                    {expandedCovers.has(applicant.id) ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    Cover letter
-                  </button>
-                  {expandedCovers.has(applicant.id) && (
-                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed bg-slate-900/50 rounded-lg p-2.5 border border-slate-700/50">
-                      {applicant.cover_letter}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
+          {visible.map(applicant => (
+            <ApplicantCard
+              key={applicant.id}
+              applicant={applicant}
+              job={job}
+              onUpdate={(userId, updates) => updateMutation.mutate({ userId, updates })}
+            />
           ))}
         </div>
+      )}
+      {!isLoading && applicants.length > 0 && visible.length === 0 && (
+        <p className="text-center text-slate-600 text-sm py-4">No applicants in "{tab}" stage</p>
       )}
     </div>
   )
 }
 
-interface JobCardRecruiterProps {
+// ── Job Card (Recruiter) ──────────────────────────────────────────────────────
+
+function JobCardRecruiter({ job, onViewApplicants, activeJobId }: {
   job: RecruiterJob
   onViewApplicants: (job: RecruiterJob) => void
-  activeApplicantJobId: string | null
-}
-
-function JobCardRecruiter({ job, onViewApplicants, activeApplicantJobId }: JobCardRecruiterProps) {
+  activeJobId: number | null
+}) {
   const qc = useQueryClient()
-
   const toggleMutation = useMutation({
-    mutationFn: () => updateRecruiterJob(job.job_id, { is_active: !job.is_active }),
+    mutationFn: () => updateRecruiterJob(String(job.id), { is_active: !job.is_active }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['recruiter-jobs'] }),
   })
-
-  const isViewing = activeApplicantJobId === job.job_id
+  const isViewing = activeJobId === job.id
 
   return (
     <div className={`card p-4 space-y-3 transition-colors ${isViewing ? 'border-brand-500/40 bg-brand-500/5' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-semibold text-slate-100 truncate">{job.title}</h3>
-            {!job.is_active && (
-              <span className="badge bg-slate-700 text-slate-400 border border-slate-600 text-[10px]">Inactive</span>
-            )}
+            <h3 className="font-semibold text-slate-100">{job.title}</h3>
+            {!job.is_active && <span className="badge bg-slate-700 text-slate-400 border border-slate-600 text-[10px]">Inactive</span>}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 text-xs text-slate-400">
-            <Building2 size={11} className="shrink-0" />
-            <span className="truncate">{job.company}</span>
+            <Building2 size={11} />{job.company}
           </div>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Applicant count badge */}
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-500/15 text-brand-300 text-xs font-medium">
-            <Users size={11} />
-            {job.applicant_count}
-          </div>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${
+          job.applicant_count > 0 ? 'bg-brand-500/15 text-brand-300' : 'bg-slate-800 text-slate-500'
+        }`}>
+          <Users size={11} />{job.applicant_count}
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-        {job.location && (
-          <span className="flex items-center gap-1"><MapPin size={11} />{job.location}</span>
-        )}
-        {job.job_type && (
-          <span className="flex items-center gap-1"><Briefcase size={11} />{job.job_type}</span>
-        )}
-        {job.experience_level && (
-          <span className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">{job.experience_level}</span>
-        )}
-        {job.salary && (
-          <span className="text-emerald-400 font-medium">{job.salary}</span>
-        )}
+        {job.location && <span className="flex items-center gap-1"><MapPin size={11} />{job.location}</span>}
+        {job.job_type && <span className="flex items-center gap-1"><Briefcase size={11} />{job.job_type}</span>}
+        {job.experience_level && <span className="badge bg-slate-800 text-slate-400 border border-slate-700 text-[10px]">{job.experience_level}</span>}
+        {job.salary && <span className="text-emerald-400 font-medium">{job.salary}</span>}
       </div>
 
       {job.skills && <SkillChips raw={job.skills} />}
 
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
         <p className="text-[11px] text-slate-600 flex items-center gap-1">
-          <Clock size={10} />
-          Posted {new Date(job.created_at).toLocaleDateString()}
+          <Clock size={10} />Posted {new Date(job.created_at).toLocaleDateString()}
         </p>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => onViewApplicants(job)}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors px-2.5 py-1 rounded-lg ${
-              isViewing
-                ? 'bg-brand-500/20 text-brand-300'
-                : 'text-slate-400 hover:text-brand-400 hover:bg-brand-500/10'
+            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
+              isViewing ? 'bg-brand-500/20 text-brand-300' : 'text-slate-400 hover:text-brand-400 hover:bg-brand-500/10'
             }`}
           >
-            <Users size={12} />
-            View Applicants
+            <Users size={12} />View Applicants
           </button>
-
           <button
             type="button"
             onClick={() => toggleMutation.mutate()}
             disabled={toggleMutation.isPending}
-            className={`flex items-center gap-1.5 text-xs font-medium transition-colors px-2.5 py-1 rounded-lg ${
-              job.is_active
-                ? 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
-                : 'text-emerald-400 hover:bg-emerald-500/10'
+            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg transition-colors ${
+              job.is_active ? 'text-slate-400 hover:text-red-400 hover:bg-red-500/10' : 'text-emerald-400 hover:bg-emerald-500/10'
             }`}
-            title={job.is_active ? 'Deactivate job listing' : 'Activate job listing'}
           >
-            {toggleMutation.isPending ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : job.is_active ? (
-              <ToggleRight size={14} />
-            ) : (
-              <ToggleLeft size={14} />
-            )}
+            {toggleMutation.isPending ? <Loader2 size={12} className="animate-spin" />
+              : job.is_active ? <ToggleRight size={14} /> : <ToggleLeft size={14} />}
             {job.is_active ? 'Deactivate' : 'Activate'}
           </button>
         </div>
@@ -401,60 +461,51 @@ function JobCardRecruiter({ job, onViewApplicants, activeApplicantJobId }: JobCa
   )
 }
 
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
 export default function RecruiterDashboard() {
   const { user } = useAuth()
   const [showPostForm, setShowPostForm] = useState(false)
-  const [activeApplicantJob, setActiveApplicantJob] = useState<RecruiterJob | null>(null)
+  const [activeJob, setActiveJob] = useState<RecruiterJob | null>(null)
 
   const { data: jobs = [], isLoading, isError } = useQuery({
     queryKey: ['recruiter-jobs'],
     queryFn: getMyRecruiterJobs,
   })
 
-  const totalJobs = jobs.length
+  const totalApplicants = jobs.reduce((s, j) => s + (j.applicant_count ?? 0), 0)
   const activeJobs = jobs.filter(j => j.is_active).length
-  const totalApplicants = jobs.reduce((sum, j) => sum + j.applicant_count, 0)
+
+  // Pipeline totals across all jobs (requires fetching per job — skip for now; show only totals)
 
   function handleViewApplicants(job: RecruiterJob) {
-    setActiveApplicantJob(prev => prev?.job_id === job.job_id ? null : job)
+    setActiveJob(prev => prev?.id === job.id ? null : job)
     setShowPostForm(false)
-  }
-
-  function handlePostNew() {
-    setShowPostForm(true)
-    setActiveApplicantJob(null)
   }
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-100 flex items-center gap-2">
-            <Briefcase size={22} className="text-brand-400" />
-            Recruiter Dashboard
+            <Briefcase size={22} className="text-brand-400" />Recruiter Dashboard
           </h1>
           {user?.companyName && (
             <p className="text-slate-500 text-sm mt-0.5 flex items-center gap-1">
-              <Building2 size={12} />
-              {user.companyName}
+              <Building2 size={12} />{user.companyName}
             </p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={handlePostNew}
-          className="btn-primary flex items-center gap-2"
-        >
-          <Plus size={15} />
-          Post New Job
+        <button type="button" onClick={() => { setShowPostForm(true); setActiveJob(null) }} className="btn-primary flex items-center gap-2">
+          <Plus size={15} />Post New Job
         </button>
       </div>
 
-      {/* Stats row */}
+      {/* Stats */}
       <div className="grid grid-cols-3 gap-3">
         <div className="card p-4 text-center space-y-1">
-          <p className="text-2xl font-bold text-slate-100">{totalJobs}</p>
+          <p className="text-2xl font-bold text-slate-100">{jobs.length}</p>
           <p className="text-xs text-slate-500">Total Jobs</p>
         </div>
         <div className="card p-4 text-center space-y-1">
@@ -463,36 +514,28 @@ export default function RecruiterDashboard() {
         </div>
         <div className="card p-4 text-center space-y-1">
           <p className="text-2xl font-bold text-emerald-400">{activeJobs}</p>
-          <p className="text-xs text-slate-500">Active Jobs</p>
+          <p className="text-xs text-slate-500">Active Listings</p>
         </div>
       </div>
 
       {/* Post Job Form */}
-      {showPostForm && (
-        <PostJobForm onClose={() => setShowPostForm(false)} />
-      )}
+      {showPostForm && <PostJobForm onClose={() => setShowPostForm(false)} />}
 
       {/* Applicant Panel */}
-      {activeApplicantJob && (
-        <ApplicantPanel job={activeApplicantJob} onClose={() => setActiveApplicantJob(null)} />
-      )}
+      {activeJob && <ApplicantPanel job={activeJob} onClose={() => setActiveJob(null)} />}
 
       {/* Jobs list */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">
-            Your Job Listings
-          </h2>
-          {jobs.length > 0 && (
-            <span className="text-xs text-slate-600">{jobs.length} total</span>
-          )}
+          <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Your Job Listings</h2>
+          {jobs.length > 0 && <span className="text-xs text-slate-600">{jobs.length} total</span>}
         </div>
 
         {isLoading && (
           <div className="space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="card p-4 animate-pulse">
-                <div className="h-4 bg-slate-800 rounded w-1/3 mb-2" />
+            {[1, 2].map(i => (
+              <div key={i} className="card p-4 animate-pulse space-y-2">
+                <div className="h-4 bg-slate-800 rounded w-1/3" />
                 <div className="h-3 bg-slate-800 rounded w-1/4" />
               </div>
             ))}
@@ -514,15 +557,10 @@ export default function RecruiterDashboard() {
             <Briefcase size={36} className="mx-auto text-slate-700" />
             <div>
               <p className="font-semibold text-slate-300">No jobs posted yet</p>
-              <p className="text-sm text-slate-500 mt-1">Click "Post New Job" to create your first listing.</p>
+              <p className="text-sm text-slate-500 mt-1">Post your first job to start receiving applications.</p>
             </div>
-            <button
-              type="button"
-              onClick={handlePostNew}
-              className="inline-flex items-center gap-2 btn-primary text-sm"
-            >
-              <Plus size={14} />
-              Post New Job
+            <button type="button" onClick={() => setShowPostForm(true)} className="inline-flex items-center gap-2 btn-primary text-sm">
+              <Plus size={14} />Post New Job
             </button>
           </div>
         )}
@@ -531,17 +569,16 @@ export default function RecruiterDashboard() {
           <div className="space-y-3">
             {jobs.map(job => (
               <JobCardRecruiter
-                key={job.job_id}
+                key={job.id}
                 job={job}
                 onViewApplicants={handleViewApplicants}
-                activeApplicantJobId={activeApplicantJob?.job_id ?? null}
+                activeJobId={activeJob?.id ?? null}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* "Verified recruiter" badge at bottom */}
       {user?.companyEmail && (
         <div className="flex items-center gap-2 text-xs text-slate-600 border-t border-slate-800 pt-4">
           <CheckCircle2 size={12} className="text-emerald-600" />

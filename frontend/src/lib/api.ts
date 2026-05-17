@@ -632,11 +632,22 @@ export interface RecruiterJob {
 export interface Applicant {
   id: number
   user_id: number
-  name: string
-  email: string
+  applicant_name: string
+  applicant_email: string
   status: string
   cover_letter: string
+  phone: string
+  linkedin_url: string
+  portfolio_url: string
+  current_role: string
+  experience_years: string
+  expected_salary: string
+  notice_period: string
+  applicant_skills: string
+  recruiter_notes: string
+  skill_match_score: number
   applied_at: string
+  updated_at: string
 }
 
 export async function postRecruiterJob(data: {
@@ -680,14 +691,30 @@ export async function getJobApplicants(jobId: string): Promise<Applicant[]> {
   return res.data
 }
 
-export async function updateApplicantStatus(jobId: string, userId: number, status: string): Promise<void> {
-  await api.patch(`/recruiter/jobs/${jobId}/applicants/${userId}`, { status })
+export async function updateApplicantStatus(
+  jobId: string,
+  userId: number,
+  updates: { status?: string; recruiterNotes?: string }
+): Promise<void> {
+  await api.patch(`/recruiter/jobs/${jobId}/applicants/${userId}`, updates)
 }
 
 // ── Job Seeker: apply to recruiter-posted jobs ────────────────────────────────
 
-export async function applyToJob(jobId: string, coverLetter?: string): Promise<void> {
-  await api.post(`/jobs/${jobId}/apply`, { coverLetter })
+export interface ApplyPayload {
+  coverLetter?: string
+  phone?: string
+  linkedinUrl?: string
+  portfolioUrl?: string
+  currentRole?: string
+  experienceYears?: string
+  expectedSalary?: string
+  noticePeriod?: string
+  applicantSkills?: string
+}
+
+export async function applyToJob(jobId: string, payload: ApplyPayload = {}): Promise<void> {
+  await api.post(`/jobs/${jobId}/apply`, payload)
 }
 
 export async function getMyApplicationsToJobs(): Promise<string[]> {

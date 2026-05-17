@@ -475,21 +475,47 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
   const numericId = parseInt(raw, 10);
   if (isNaN(numericId)) return res.status(400).json({ error: 'Invalid job id' });
 
-  const { coverLetter = '' } = req.body;
+  const {
+    coverLetter = '',
+    phone = null,
+    linkedinUrl = null,
+    portfolioUrl = null,
+    currentRole = null,
+    experienceYears = null,
+    expectedSalary = null,
+    noticePeriod = null,
+    applicantSkills = '',
+  } = req.body;
+
   try {
-    // Confirm job exists and is active
+    // Confirm job exists and is active; also fetch skills for score computation
     const { rows: job } = await pool.query(
-      'SELECT id FROM jobhunter_jobs WHERE id = $1 AND is_active = TRUE',
+      'SELECT id, skills FROM jobhunter_jobs WHERE id = $1 AND is_active = TRUE',
       [numericId]
     );
     if (!job[0]) return res.status(404).json({ error: 'Job not found or inactive' });
 
+    // Compute skill match score
+    const jobSkills = (job[0].skills || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const applicantSkillsLower = (applicantSkills || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const matched = jobSkills.filter(s => applicantSkillsLower.includes(s));
+    const skillMatchScore = jobSkills.length > 0
+      ? Math.round((matched.length / jobSkills.length) * 100)
+      : 0;
+
     const { rows } = await pool.query(
-      `INSERT INTO job_applications (job_id, user_id, cover_letter)
-       VALUES ($1, $2, $3)
+      `INSERT INTO job_applications
+         (job_id, user_id, cover_letter, phone, linkedin_url, portfolio_url,
+          current_role, experience_years, expected_salary, notice_period,
+          applicant_skills, skill_match_score)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (job_id, user_id) DO NOTHING
        RETURNING *`,
-      [numericId, req.user.id, coverLetter]
+      [numericId, req.user.id, coverLetter, phone, linkedinUrl, portfolioUrl,
+       currentRole, experienceYears, expectedSalary, noticePeriod,
+       applicantSkills || null, skillMatchScore]
     );
     if (!rows[0]) return res.status(409).json({ error: 'Already applied' });
     res.status(201).json(rows[0]);
