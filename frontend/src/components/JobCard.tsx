@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, Bot, Loader2, AlertCircle, Zap } from 'lucide-react'
 import type { Job } from '../types'
 import type { FitScore } from '../lib/jobScorer'
-import { scoreLabel } from '../lib/jobScorer'
+import { scoreLabel, extractTitleFromDescription } from '../lib/jobScorer'
 import type { ResumeAnalysis } from '../lib/api'
 import { deepScoreJob } from '../lib/api'
 import type { DeepScore } from '../lib/api'
@@ -84,6 +84,8 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
 
   const sourceClass = SOURCE_COLORS[job.source] ?? 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'
   const tags = job.tags ? job.tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 6) : []
+  const displayTitle = job.title?.trim() || extractTitleFromDescription(job.description ?? '') || 'Untitled Position'
+  const isTitleExtracted = !job.title?.trim() && displayTitle !== 'Untitled Position'
 
   const deepMutation = useMutation({
     mutationFn: () => deepScoreJob(resumeAnalysis!, job),
@@ -108,7 +110,12 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           {/* Title row */}
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <h3 className="font-semibold text-slate-100 truncate leading-snug">{job.title}</h3>
+              <h3 className="font-semibold text-slate-100 truncate leading-snug">
+                {displayTitle}
+                {isTitleExtracted && (
+                  <span className="ml-1.5 text-[9px] font-normal text-slate-500 align-middle">from description</span>
+                )}
+              </h3>
               <div className="flex items-center gap-1.5 mt-0.5 text-sm text-slate-400">
                 <Building2 size={13} className="shrink-0" />
                 <span className="truncate">{job.company}</span>

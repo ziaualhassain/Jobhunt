@@ -44,6 +44,19 @@ function wordBoundaryTest(text: string, term: string): boolean {
   }
 }
 
+export function extractTitleFromDescription(desc: string): string | null {
+  if (!desc) return null
+  let m = desc.match(/\*\*Job Description\*\*\s*-\s*(.+?)\s*-\s*\*\*/i)
+  if (m) return m[1].trim()
+  m = desc.match(/\*{1,2}Job\s+Description\s*:\s*(.+?)\*{1,2}/i)
+  if (m) return m[1].trim()
+  m = desc.match(/Job\s+Description\s*[-:]\s*([A-Z][^\n\-*]{5,80}?)(?:\s*[-*\n]|$)/i)
+  if (m) return m[1].trim()
+  m = desc.match(/^\*\*([A-Z][^*\n]{5,60})\*\*/)
+  if (m) return m[1].trim()
+  return null
+}
+
 export function parseRequiredYears(text: string): number | null {
   const t = text.toLowerCase()
   const patterns = [
@@ -101,7 +114,8 @@ const W_WITHOUT_ROLE = { skills: 0.50, level: 0.35, role: 0,    location: 0.15 }
 
 export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: string): FitScore {
   const desc = job.description ?? ''
-  const jobTextFull = `${job.title} ${job.tags ?? ''} ${desc}`
+  const effectiveTitle = job.title?.trim() || extractTitleFromDescription(desc) || ''
+  const jobTextFull = `${effectiveTitle} ${job.tags ?? ''} ${desc}`
   const allSkills = [...new Set([...analysis.skills, ...analysis.searchKeywords])]
 
   // ── 1. Skill overlap (40%) ────────────────────────────────────────────────
@@ -109,7 +123,7 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
   const matchedSkills = allSkills.filter(s => wordBoundaryTest(jobTextFull, s))
 
   // Title match = primary tech stack signal → bonus up to +20
-  const titleMatches = matchedSkills.filter(s => wordBoundaryTest(job.title, s))
+  const titleMatches = matchedSkills.filter(s => wordBoundaryTest(effectiveTitle, s))
   const titleBonus = Math.min(20, titleMatches.length * 7)
 
   // High-value skill hit → bonus up to +15
@@ -123,20 +137,20 @@ export function scoreJob(job: Job, analysis: ResumeAnalysis, profileRegion?: str
 
   // ── 2. Experience level fit (25%) ─────────────────────────────────────────
   const resumeLevel = LEVEL_MAP[analysis.experienceLevel] ?? 2
-  const jobLevel    = detectJobLevel(job.title, desc)
+  const jobLevel    = detectJobLevel(effectiveTitle, desc)
   const baseLevelScore = LEVEL_SCORE[Math.abs(resumeLevel - jobLevel)] ?? 5
   const penalty    = yearsGapPenalty(analysis.yearsOfExperience, desc)
   const levelScore = Math.max(0, baseLevelScore - penalty)
 
   // ── 3. Role / title match (only when job titles are available) ───────────
-  const jobTitleLower = job.title.toLowerCase()
+  const jobTitleLower = effectiveTitle.toLowerCase()
   const roleWords = analysis.jobTitles
     .flatMap(t => t.toLowerCase().split(/\s+/))
     .filter(w => w.length > 3)
   const roleActive = roleWords.length > 0
 
   const exactTitleMatch = analysis.jobTitles.some(t =>
-    job.title.toLowerCase().includes(t.toLowerCase())
+    effectiveTitle.toLowerCase().includes(t.toLowerCase())
   )
   const roleHits = roleWords.filter(w => wordBoundaryTest(jobTitleLower, w)).length
   const rawRoleScore = roleActive
