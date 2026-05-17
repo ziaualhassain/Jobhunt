@@ -200,11 +200,9 @@ async function initDb() {
     );
   `);
   // ── Recruiter feature ──────────────────────────────────────────────────────
-  await pool.query(`
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'job_seeker';
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name TEXT;
-    ALTER TABLE users ADD COLUMN IF NOT EXISTS company_email TEXT;
-  `);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'job_seeker'`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_name TEXT`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS company_email TEXT`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS jobhunter_jobs (
       id               SERIAL PRIMARY KEY,
