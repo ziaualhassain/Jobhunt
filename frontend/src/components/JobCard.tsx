@@ -3,7 +3,7 @@ import { useMutation } from '@tanstack/react-query'
 import { ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag, ChevronDown, ChevronUp, Bot, Loader2, AlertCircle, Zap } from 'lucide-react'
 import type { Job } from '../types'
 import type { FitScore } from '../lib/jobScorer'
-import { scoreColor, scoreLabel } from '../lib/jobScorer'
+import { scoreLabel } from '../lib/jobScorer'
 import type { ResumeAnalysis } from '../lib/api'
 import { deepScoreJob } from '../lib/api'
 import type { DeepScore } from '../lib/api'
@@ -39,6 +39,39 @@ function ScoreBar({ value, label }: { value: number; label: string }) {
       </div>
       <span className="text-[10px] text-slate-400 w-7 text-right">{value}%</span>
     </div>
+  )
+}
+
+function ScoreCircle({ score, onClick }: { score: number; onClick: () => void }) {
+  const r = 16
+  const circ = 2 * Math.PI * r
+  const offset = circ * (1 - score / 100)
+  const color = score >= 90 ? '#10b981' : score >= 75 ? '#eab308' : score >= 50 ? '#f97316' : '#64748b'
+  const textColor = score >= 90 ? 'text-emerald-400' : score >= 75 ? 'text-yellow-400' : score >= 50 ? 'text-orange-400' : 'text-slate-400'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Match score: ${score}% — click for breakdown`}
+      className="relative shrink-0 hover:scale-110 transition-transform cursor-pointer"
+    >
+      <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90">
+        <circle cx="20" cy="20" r={r} fill="none" stroke="#1e293b" strokeWidth="3.5" />
+        <circle
+          cx="20" cy="20" r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+        />
+      </svg>
+      <span className={`absolute inset-0 flex items-center justify-center text-[9px] font-bold leading-none ${textColor}`}>
+        {score}
+      </span>
+    </button>
   )
 }
 
@@ -84,14 +117,7 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
             {/* Badges: fit score + source */}
             <div className="flex items-center gap-1.5 shrink-0">
               {PERCENTAGE_ENABLE && displayScore && (
-                <button
-                  type="button"
-                  onClick={() => setScoreOpen(v => !v)}
-                  className={`badge border text-[10px] font-semibold cursor-pointer hover:opacity-90 transition-opacity ${scoreColor(displayScore.overall)}`}
-                  title={scoreLabel(displayScore.overall)}
-                >
-                  {displayScore.overall}% match
-                </button>
+                <ScoreCircle score={displayScore.overall} onClick={() => setScoreOpen(v => !v)} />
               )}
               <span className={`badge border text-[10px] ${sourceClass}`}>{job.source}</span>
             </div>
@@ -140,18 +166,30 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
           {/* ── Fit score breakdown panel ─────────────────────────────────── */}
           {PERCENTAGE_ENABLE && fitScore && scoreOpen && (
             <div className="mt-3 rounded-xl border border-slate-700/60 bg-slate-800/40 p-3 space-y-3">
-              <p className="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Resume fit breakdown</p>
 
-              <div className="space-y-1.5">
-                <ScoreBar value={aiScore ? aiScore.score : fitScore.skills}  label="Skills" />
-                <ScoreBar value={fitScore.level} label="Level" />
-                <ScoreBar value={fitScore.role}  label="Role" />
+              {/* Header with overall score */}
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">Match score breakdown</p>
+                <span className={`text-xs font-bold ${displayScore!.overall >= 90 ? 'text-emerald-400' : displayScore!.overall >= 75 ? 'text-yellow-400' : displayScore!.overall >= 50 ? 'text-orange-400' : 'text-slate-400'}`}>
+                  {displayScore!.overall}% — {scoreLabel(displayScore!.overall)}
+                </span>
               </div>
 
-              {/* Matched / missing chips */}
+              {/* Score formula explanation */}
+              <div className="rounded-lg bg-slate-900/50 border border-slate-700/40 px-2.5 py-2 space-y-1.5">
+                <p className="text-[10px] text-slate-500 font-medium mb-2">How this score is calculated</p>
+                <ScoreBar value={aiScore ? aiScore.score : fitScore.skills} label="Skills" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Skill overlap with your resume keywords · weight 50%</p>
+                <ScoreBar value={fitScore.level} label="Level" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Seniority match + years-of-experience fit · weight 30%</p>
+                <ScoreBar value={fitScore.role}  label="Role" />
+                <p className="text-[9px] text-slate-600 pl-12 -mt-0.5">Job title alignment with your target roles · weight 20%</p>
+              </div>
+
+              {/* Pros — matched skills */}
               {fitScore.matchedSkills.length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-600 mb-1">Matched</p>
+                  <p className="text-[10px] text-emerald-500 font-semibold mb-1.5">✓ Pros — skills you have</p>
                   <div className="flex flex-wrap gap-1">
                     {fitScore.matchedSkills.map(s => (
                       <span key={s} className="badge bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]">✓ {s}</span>
@@ -160,9 +198,10 @@ export default function JobCard({ job, isSaved, onSave, fitScore, resumeAnalysis
                 </div>
               )}
 
+              {/* Cons — skill gaps */}
               {(aiScore?.skill_gaps ?? fitScore.missingSignals).length > 0 && (
                 <div>
-                  <p className="text-[10px] text-slate-600 mb-1">Gaps</p>
+                  <p className="text-[10px] text-red-400 font-semibold mb-1.5">✗ Cons — skills to develop</p>
                   <div className="flex flex-wrap gap-1">
                     {(aiScore?.skill_gaps ?? fitScore.missingSignals).map(s => (
                       <span key={s} className="badge bg-red-500/10 text-red-400 border border-red-500/20 text-[10px]">✗ {s}</span>
