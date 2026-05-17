@@ -163,6 +163,10 @@ async function syncTheirStackJobs() {
 function startTheirStackSync() {
   syncTheirStackJobs();
   setInterval(syncTheirStackJobs, 6 * 60 * 60 * 1000); // refresh every 6 hours
+
+  // Enrich titles on startup for any existing blank-title rows in DB,
+  // independent of REFRESH_THEIRSTACK (enrichment only needs ANTHROPIC_API_KEY)
+  enrichMissingTitles().catch(err => console.error('[TitleExtractor] Startup run failed:', err.message));
 }
 
 module.exports = { startTheirStackSync };
