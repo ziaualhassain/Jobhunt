@@ -111,7 +111,7 @@ router.get('/jobs/:id/applicants', async (req, res) => {
 
     const { rows } = await pool.query(
       `SELECT ja.id, ja.job_id, ja.user_id, ja.cover_letter, ja.status, ja.applied_at, ja.updated_at,
-              ja.phone, ja.linkedin_url, ja.portfolio_url, ja.current_role, ja.experience_years,
+              ja.phone, ja.linkedin_url, ja.portfolio_url, ja.applicant_role, ja.experience_years,
               ja.expected_salary, ja.notice_period, ja.applicant_skills, ja.recruiter_notes, ja.skill_match_score,
               u.name AS applicant_name, u.email AS applicant_email
        FROM job_applications ja

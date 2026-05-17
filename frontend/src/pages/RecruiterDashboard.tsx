@@ -171,8 +171,8 @@ function ApplicantCard({ applicant, job, onUpdate }: {
 
           {/* Meta: current role, experience */}
           <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-slate-500">
-            {applicant.current_role && (
-              <span className="flex items-center gap-1"><User size={10} />{applicant.current_role}</span>
+            {applicant.applicant_role && (
+              <span className="flex items-center gap-1"><User size={10} />{applicant.applicant_role}</span>
             )}
             {applicant.experience_years && (
               <span className="flex items-center gap-1"><Briefcase size={10} />{applicant.experience_years} yrs</span>

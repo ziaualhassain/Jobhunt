@@ -234,7 +234,7 @@ async function initDb() {
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS phone TEXT`,
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS linkedin_url TEXT`,
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS portfolio_url TEXT`,
-    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS current_role TEXT`,
+    `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS applicant_role TEXT`,
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS experience_years TEXT`,
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS expected_salary TEXT`,
     `ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS notice_period TEXT`,

@@ -508,7 +508,7 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO job_applications
          (job_id, user_id, cover_letter, phone, linkedin_url, portfolio_url,
-          current_role, experience_years, expected_salary, notice_period,
+          applicant_role, experience_years, expected_salary, notice_period,
           applicant_skills, skill_match_score)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (job_id, user_id) DO NOTHING

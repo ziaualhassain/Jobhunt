@@ -639,7 +639,7 @@ export interface Applicant {
   phone: string
   linkedin_url: string
   portfolio_url: string
-  current_role: string
+  applicant_role: string
   experience_years: string
   expected_salary: string
   notice_period: string
