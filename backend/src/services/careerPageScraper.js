@@ -251,6 +251,25 @@ async function scrapeCareerPage(companyName, careerUrl) {
   }
 }
 
+// ─── Default companies (visible to all users, no watchlist needed) ────────────
+// Only ATS platforms with structured public APIs (Greenhouse, Lever, Ashby) so
+// scraping works without AI or Playwright.
+
+const DEFAULT_COMPANIES = [
+  { name: 'Stripe',      url: 'https://jobs.lever.co/stripe' },
+  { name: 'Vercel',      url: 'https://jobs.lever.co/vercel' },
+  { name: 'Airtable',    url: 'https://jobs.lever.co/airtable' },
+  { name: 'Airbnb',      url: 'https://boards.greenhouse.io/airbnb' },
+  { name: 'Figma',       url: 'https://boards.greenhouse.io/figma' },
+  { name: 'Notion',      url: 'https://boards.greenhouse.io/notion' },
+  { name: 'Coinbase',    url: 'https://boards.greenhouse.io/coinbase' },
+  { name: 'Discord',     url: 'https://boards.greenhouse.io/discord' },
+  { name: 'Canva',       url: 'https://boards.greenhouse.io/canva' },
+  { name: 'Linear',      url: 'https://jobs.ashbyhq.com/linear' },
+  { name: 'Zepto',       url: 'https://jobs.lever.co/zepto' },
+  { name: 'Swiggy',      url: 'https://boards.greenhouse.io/swiggy' },
+];
+
 // ─── DB sync ─────────────────────────────────────────────────────────────────
 
 async function upsertJobs(jobs, careerUrl, companyName) {
@@ -276,8 +295,33 @@ async function upsertJobs(jobs, careerUrl, companyName) {
   }
 }
 
+async function syncDefaultCompanies() {
+  // Seed defaults into default_career_pages then scrape stale ones
+  for (const { name, url } of DEFAULT_COMPANIES) {
+    await pool.query(`
+      INSERT INTO default_career_pages (company_name, career_url)
+      VALUES ($1, $2)
+      ON CONFLICT (career_url) DO NOTHING
+    `, [name, url]).catch(() => {});
+  }
+
+  const { rows } = await pool.query(`
+    SELECT company_name, career_url FROM default_career_pages
+    WHERE last_scraped_at IS NULL OR last_scraped_at < NOW() - INTERVAL '6 hours'
+  `);
+
+  for (const row of rows) {
+    const { jobs, error } = await scrapeCareerPage(row.company_name, row.career_url);
+    await upsertJobs(jobs, row.career_url, row.company_name);
+    await pool.query(
+      'UPDATE default_career_pages SET last_scraped_at = NOW(), scrape_error = $1, job_count = $2 WHERE career_url = $3',
+      [error, jobs.length, row.career_url],
+    );
+  }
+}
+
 async function syncAllWatchedCompanies() {
-  // Find all distinct career URLs that are stale (not scraped in the last 6 hours)
+  // 1. Sync user-added companies
   const { rows } = await pool.query(`
     SELECT DISTINCT ON (career_url) id, user_id, company_name, career_url
     FROM watched_companies
@@ -289,20 +333,20 @@ async function syncAllWatchedCompanies() {
   for (const row of rows) {
     const { jobs, error } = await scrapeCareerPage(row.company_name, row.career_url);
     await upsertJobs(jobs, row.career_url, row.company_name);
-
-    // Update last_scraped_at and error for ALL users watching this URL
     await pool.query(`
       UPDATE watched_companies
       SET last_scraped_at = NOW(), scrape_error = $1, job_count = $2
       WHERE career_url = $3
     `, [error, jobs.length, row.career_url]);
   }
+
+  // 2. Sync defaults
+  await syncDefaultCompanies();
 }
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 function startCareerPageSync() {
-  // Initial sync after 30 s (let the server start first)
   setTimeout(async () => {
     try { await syncAllWatchedCompanies(); } catch (e) { console.error('[CareerScraper] Initial sync error:', e.message); }
   }, 30_000);
@@ -314,4 +358,4 @@ function startCareerPageSync() {
   console.log('[CareerScraper] Sync scheduled every 6 h');
 }
 
-module.exports = { scrapeCareerPage, syncAllWatchedCompanies, startCareerPageSync, upsertJobs };
+module.exports = { scrapeCareerPage, syncAllWatchedCompanies, startCareerPageSync, upsertJobs, DEFAULT_COMPANIES };

@@ -203,6 +203,14 @@ async function initDb() {
       created_at      TIMESTAMPTZ DEFAULT NOW(),
       UNIQUE(user_id, career_url)
     );
+    CREATE TABLE IF NOT EXISTS default_career_pages (
+      id              SERIAL PRIMARY KEY,
+      company_name    VARCHAR(200) NOT NULL,
+      career_url      TEXT UNIQUE NOT NULL,
+      last_scraped_at TIMESTAMPTZ,
+      job_count       INTEGER DEFAULT 0,
+      scrape_error    TEXT
+    );
     CREATE TABLE IF NOT EXISTS careers (
       id           SERIAL PRIMARY KEY,
       job_id       TEXT UNIQUE NOT NULL,
