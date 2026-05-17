@@ -1,10 +1,21 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const jwt = require('jsonwebtoken');
 const Anthropic = require('@anthropic-ai/sdk');
 const { shouldUseApi } = require('../services/llmProvider');
 const { aggregateJobs } = require('../services/jobSources');
 const { pool } = require('../db/database');
+
+// Decodes the JWT if present but never blocks the request (for public endpoints)
+function optionalAuth(req, _res, next) {
+  try {
+    const auth = req.headers.authorization;
+    const raw = auth?.startsWith('Bearer ') ? auth.slice(7) : (req.query.token ?? null);
+    if (raw) req.user = jwt.verify(raw, process.env.JWT_SECRET);
+  } catch { /* ignore invalid tokens */ }
+  next();
+}
 
 const STOP_WORDS = new Set([
   'solutions', 'technologies', 'technology', 'methodologies', 'methodology',
@@ -79,8 +90,153 @@ async function getTheirStackJobs(filters) {
   }
 }
 
+// Career page jobs — user watchlist + default companies (UNIONed, deduplicated)
+async function getCareerPageJobs(userId, filters) {
+  const { keywords = [], tags = [], region = '' } = filters;
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+
+  // Build shared signal/region clauses (applied to both halves of the UNION)
+  // We build the param list once and reuse param indices via a helper.
+  const params = [userId];  // $1 = userId (used only in the watchlist half)
+
+  function regionClause(alias) {
+    if (!region) return null;
+    params.push(region);
+    return `${alias}.region = $${params.length}`;
+  }
+
+  function signalClauses(alias) {
+    if (allSignals.length === 0) return null;
+    const clauses = allSignals.flatMap(signal => {
+      const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+      return words.map(w => {
+        params.push(`%${w}%`);
+        const i = params.length;
+        return `(LOWER(${alias}.title) LIKE $${i} OR LOWER(${alias}.tags) LIKE $${i} OR LOWER(${alias}.description) LIKE $${i})`;
+      });
+    });
+    return clauses.length > 0 ? `(${clauses.join(' OR ')})` : null;
+  }
+
+  // ── Watchlist half ────────────────────────────────────────────────────────
+  const watchConditions = ['wc.user_id = $1', 'wc.is_active = true'];
+  const rc1 = regionClause('cpj');
+  if (rc1) watchConditions.push(rc1);
+  const sc1 = signalClauses('cpj');
+  if (sc1) watchConditions.push(sc1);
+
+  // ── Default companies half ────────────────────────────────────────────────
+  const defaultConditions = [];
+  const rc2 = regionClause('dc');
+  if (rc2) defaultConditions.push(rc2);
+  const sc2 = signalClauses('dc');
+  if (sc2) defaultConditions.push(sc2);
+
+  const defaultWhere = defaultConditions.length > 0
+    ? `WHERE ${defaultConditions.join(' AND ')}`
+    : '';
+
+  const sql = `
+    SELECT cpj.job_id, cpj.company_name, cpj.location, cpj.region, cpj.url,
+           cpj.description, cpj.job_type, cpj.tags, cpj.title, cpj.scraped_at
+    FROM careers cpj
+    JOIN watched_companies wc ON wc.career_url = cpj.career_url
+    WHERE ${watchConditions.join(' AND ')}
+
+    UNION
+
+    SELECT dc.job_id, dc.company_name, dc.location, dc.region, dc.url,
+           dc.description, dc.job_type, dc.tags, dc.title, dc.scraped_at
+    FROM careers dc
+    JOIN default_career_pages dcp ON dcp.career_url = dc.career_url
+    ${defaultWhere}
+
+    ORDER BY scraped_at DESC NULLS LAST
+    LIMIT 200
+  `;
+
+  try {
+    const { rows } = await pool.query(sql, params);
+    return rows.map(r => ({
+      job_id:      r.job_id,
+      title:       r.title,
+      company:     r.company_name,
+      location:    r.location || 'Not specified',
+      region:      r.region || '',
+      url:         r.url,
+      description: r.description || '',
+      salary:      '',
+      job_type:    r.job_type || 'Full-time',
+      source:      'Company Watch',
+      tags:        r.tags || '',
+      logo:        '',
+    }));
+  } catch (err) {
+    console.error('[CareerPageJobs] query failed:', err.message);
+    return [];
+  }
+}
+
+// Default career page jobs — available to all users (no auth required)
+async function getDefaultCareerJobs(filters) {
+  const { keywords = [], tags = [], region = '' } = filters;
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+
+  const conditions = [];
+  const params = [];
+
+  if (region) {
+    params.push(region);
+    conditions.push(`dc.region = $${params.length}`);
+  }
+
+  if (allSignals.length > 0) {
+    const signalClauses = allSignals.flatMap(signal => {
+      const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+      return words.map(w => {
+        params.push(`%${w}%`);
+        const i = params.length;
+        return `(LOWER(dc.title) LIKE $${i} OR LOWER(dc.tags) LIKE $${i} OR LOWER(dc.description) LIKE $${i})`;
+      });
+    });
+    if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
+  }
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+  const sql = `
+    SELECT dc.job_id, dc.company_name, dc.location, dc.region, dc.url,
+           dc.description, dc.job_type, dc.tags, dc.title, dc.scraped_at
+    FROM careers dc
+    JOIN default_career_pages dcp ON dcp.career_url = dc.career_url
+    ${where}
+    ORDER BY dc.scraped_at DESC NULLS LAST
+    LIMIT 200
+  `;
+
+  try {
+    const { rows } = await pool.query(sql, params);
+    return rows.map(r => ({
+      job_id:      r.job_id,
+      title:       r.title,
+      company:     r.company_name,
+      location:    r.location || 'Not specified',
+      region:      r.region || '',
+      url:         r.url,
+      description: r.description || '',
+      salary:      '',
+      job_type:    r.job_type || 'Full-time',
+      source:      'Company Watch',
+      tags:        r.tags || '',
+      logo:        '',
+    }));
+  } catch (err) {
+    console.error('[DefaultCareerJobs] query failed:', err.message);
+    return [];
+  }
+}
+
 // GET /api/jobs/search
-router.get('/search', async (req, res) => {
+router.get('/search', optionalAuth, async (req, res) => {
   try {
     const {
       keywords = '',
@@ -102,19 +258,16 @@ router.get('/search', async (req, res) => {
       region,
     };
 
-    // Live sources (RemoteOK, WWR, Himalayas, ArbeitNow) carry Remote jobs.
-    // Remote jobs are relevant to users in any country, so always include them.
-    // Only skip live sources when the user explicitly wants Remote-only AND has
-    // no other filters — not a scenario that helps here.
-    const [liveJobs, theirStackJobs] = await Promise.all([
+    const [liveJobs, theirStackJobs, careerJobs] = await Promise.all([
       aggregateJobs(filters),
       getTheirStackJobs(filters),
+      req.user ? getCareerPageJobs(req.user.id, filters) : getDefaultCareerJobs(filters),
     ]);
 
     // Merge and deduplicate by job_id
     const seen = new Set();
     const jobs = [];
-    for (const job of [...liveJobs, ...theirStackJobs]) {
+    for (const job of [...liveJobs, ...theirStackJobs, ...careerJobs]) {
       if (!seen.has(job.job_id)) {
         seen.add(job.job_id);
         jobs.push(job);

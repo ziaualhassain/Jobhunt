@@ -1,0 +1,40 @@
+services:
+  # ── Backend (Node.js + Playwright) ──────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+    env_file: ./backend/.env
+    volumes:
+      # Persists uploaded resumes and saved browser sessions across restarts
+      - uploads:/app/uploads
+    ports:
+      - "3001:3001"     # optional: remove to keep backend internal-only
+    # Chromium needs at least 512 MB of shared memory (default Docker shm is 64 MB)
+    shm_size: "1gb"
+    restart: unless-stopped
+
+  # ── Frontend (Vite build → Nginx) ────────────────────────────────────────────
+  # Nginx serves the React SPA and proxies /api/* to the backend,
+  # so there are no CORS issues and no separate port is needed for the API.
+  #
+  # VITE_* vars are baked into the JS bundle at build time.
+  # Set them in a .env file at the project root before running docker compose up --build.
+  # Example root .env:
+  #   VITE_AUTH0_DOMAIN=dev-xxxx.us.auth0.com
+  #   VITE_AUTH0_CLIENT_ID=your-client-id
+  #   VITE_PERCENTAGE_ENABLE=true
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_AUTH0_DOMAIN: ${VITE_AUTH0_DOMAIN:-}
+        VITE_AUTH0_CLIENT_ID: ${VITE_AUTH0_CLIENT_ID:-}
+        VITE_PERCENTAGE_ENABLE: ${VITE_PERCENTAGE_ENABLE:-true}
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  uploads:

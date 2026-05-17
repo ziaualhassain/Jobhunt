@@ -1,0 +1,20 @@
+# Dependencies — reinstalled inside the image
+node_modules
+backend/node_modules
+frontend/node_modules
+
+# Build output
+frontend/dist
+
+# Local env files — secrets must not go into the image
+.env
+*.local
+backend/.env
+
+# Uploaded files and browser sessions — mounted as a Docker volume instead
+backend/uploads
+
+# Dev tooling
+**/.git
+**/.claude
+**/npm-debug.log*

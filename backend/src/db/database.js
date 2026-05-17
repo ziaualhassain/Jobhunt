@@ -189,6 +189,43 @@ async function initDb() {
   await pool.query(`
     UPDATE theirstack_jobs SET region = 'India' WHERE region IS NULL;
   `);
+  // ── Career page watchlist + scraped jobs ────────────────────────────────────
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS watched_companies (
+      id              SERIAL PRIMARY KEY,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_name    VARCHAR(200) NOT NULL,
+      career_url      TEXT NOT NULL,
+      is_active       BOOLEAN DEFAULT true,
+      last_scraped_at TIMESTAMPTZ,
+      job_count       INTEGER DEFAULT 0,
+      scrape_error    TEXT,
+      created_at      TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(user_id, career_url)
+    );
+    CREATE TABLE IF NOT EXISTS default_career_pages (
+      id              SERIAL PRIMARY KEY,
+      company_name    VARCHAR(200) NOT NULL,
+      career_url      TEXT UNIQUE NOT NULL,
+      last_scraped_at TIMESTAMPTZ,
+      job_count       INTEGER DEFAULT 0,
+      scrape_error    TEXT
+    );
+    CREATE TABLE IF NOT EXISTS careers (
+      id           SERIAL PRIMARY KEY,
+      job_id       TEXT UNIQUE NOT NULL,
+      company_name TEXT NOT NULL,
+      career_url   TEXT NOT NULL,
+      title        TEXT,
+      location     TEXT,
+      region       TEXT,
+      url          TEXT,
+      description  TEXT,
+      job_type     TEXT DEFAULT 'Full-time',
+      tags         TEXT DEFAULT '',
+      scraped_at   TIMESTAMPTZ DEFAULT NOW()
+    );
+  `);
   console.log('[DB] Schema ready');
 }
 

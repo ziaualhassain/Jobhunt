@@ -326,4 +326,4 @@ async function aggregateJobs(filters = {}) {
   return allJobs;
 }
 
-module.exports = { aggregateJobs };
+module.exports = { aggregateJobs, classifyRegion };
