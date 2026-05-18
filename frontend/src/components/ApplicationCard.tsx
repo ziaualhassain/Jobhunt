@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ExternalLink, Trash2, Edit3, Check, X, Calendar, Building2, GripVertical } from 'lucide-react'
+import { ExternalLink, Trash2, Edit3, Check, X, Calendar, Building2, GripVertical, Lock, PowerOff } from 'lucide-react'
 import type { Application, ApplicationStatus } from '../types'
 import { STATUS_CONFIG } from '../types'
 
@@ -22,6 +22,8 @@ export default function ApplicationCard({
   const [editingNotes, setEditingNotes] = useState(false)
   const [noteDraft, setNoteDraft] = useState(app.notes || '')
   const cfg = STATUS_CONFIG[app.status]
+  const isJobHunters = app.source === 'JobHunters'
+  const isClosed = isJobHunters && app.job_active === false
 
   function saveNotes() {
     onNotesChange(app.id, noteDraft)
@@ -34,43 +36,73 @@ export default function ApplicationCard({
 
   return (
     <div
-      draggable
-      onDragStart={() => onDragStart(app.id)}
+      draggable={!isJobHunters}
+      onDragStart={() => { if (!isJobHunters) onDragStart(app.id) }}
       onDragEnd={onDragEnd}
-      className={`card p-3 space-y-2 group transition-opacity ${isDragging ? 'opacity-40' : 'opacity-100'}`}
+      className={`card p-3 space-y-2 group transition-all ${
+        isClosed
+          ? 'opacity-50 border-slate-700/30 bg-slate-900/60'
+          : isDragging ? 'opacity-40' : 'opacity-100'
+      }`}
     >
       <div className="flex items-start gap-1.5">
-        <GripVertical
-          size={14}
-          className="text-slate-700 group-hover:text-slate-500 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 transition-colors"
-        />
+        {isJobHunters ? (
+          <Lock size={13} className="text-slate-700 mt-0.5 shrink-0" />
+        ) : (
+          <GripVertical
+            size={14}
+            className="text-slate-700 group-hover:text-slate-500 cursor-grab active:cursor-grabbing mt-0.5 shrink-0 transition-colors"
+          />
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-slate-200 leading-snug truncate">{app.title}</p>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <p className={`text-sm font-medium leading-snug truncate ${isClosed ? 'text-slate-500 line-through decoration-slate-600' : 'text-slate-200'}`}>
+                  {app.title}
+                </p>
+                {isClosed && (
+                  <span className="shrink-0 flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-red-900/40 text-red-400 border border-red-800/50">
+                    <PowerOff size={7} />Closed
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                 <Building2 size={11} />
                 {app.company}
               </p>
             </div>
-            <button
-              onClick={() => onDelete(app.id)}
-              className="text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
-            >
-              <Trash2 size={13} />
-            </button>
+            {!isJobHunters && (
+              <button
+                onClick={() => onDelete(app.id)}
+                className="text-slate-700 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
           </div>
 
-          {/* Status selector */}
-          <select
-            value={app.status}
-            onChange={e => onStatusChange(app.id, e.target.value as ApplicationStatus)}
-            className={`mt-2 text-xs font-medium rounded-md px-2 py-1 border w-full focus:outline-none focus:ring-1 focus:ring-brand-500 ${cfg.bg} ${cfg.color} ${cfg.border} bg-opacity-50`}
-          >
-            {ALL_STATUSES.map(s => (
-              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-            ))}
-          </select>
+          {/* Status selector — read-only badge for JobHunters, dropdown otherwise */}
+          {isJobHunters ? (
+            <div className="mt-2 space-y-0.5">
+              <span className={`block text-xs font-medium rounded-md px-2 py-1 border w-full text-center ${cfg.bg} ${cfg.color} ${cfg.border}`}>
+                {cfg.label}
+              </span>
+              <p className="text-[10px] text-slate-600 text-center flex items-center justify-center gap-0.5">
+                <Lock size={8} />{isClosed ? 'Position closed by recruiter' : 'Recruiter-managed'}
+              </p>
+            </div>
+          ) : (
+            <select
+              value={app.status}
+              onChange={e => onStatusChange(app.id, e.target.value as ApplicationStatus)}
+              className={`mt-2 text-xs font-medium rounded-md px-2 py-1 border w-full focus:outline-none focus:ring-1 focus:ring-brand-500 ${cfg.bg} ${cfg.color} ${cfg.border} bg-opacity-50`}
+            >
+              {ALL_STATUSES.map(s => (
+                <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+              ))}
+            </select>
+          )}
 
           {/* Notes */}
           {editingNotes ? (

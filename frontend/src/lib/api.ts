@@ -17,8 +17,13 @@ export async function loginUser(email: string, password: string): Promise<{ toke
   return res.data;
 }
 
-export async function registerUser(name: string, email: string, password: string): Promise<{ token: string; user: User }> {
-  const res = await api.post('/auth/register', { name, email, password });
+export async function registerUser(
+  name: string, email: string, password: string,
+  role?: 'job_seeker' | 'recruiter',
+  companyName?: string,
+  companyEmail?: string,
+): Promise<{ token: string; user: User }> {
+  const res = await api.post('/auth/register', { name, email, password, role, companyName, companyEmail });
   return res.data;
 }
 
@@ -295,6 +300,111 @@ export async function deleteApplication(id: number): Promise<void> {
 export async function getStats(): Promise<{ total: number; byStatus: { status: string; count: number }[] }> {
   const res = await api.get('/applications/stats/summary');
   return res.data;
+}
+
+// ── Recruiter ─────────────────────────────────────────────────────────────────
+
+export interface RecruiterJob {
+  id: number
+  title: string
+  description: string
+  location: string
+  job_type: string
+  experience_level: string
+  skills: string
+  salary?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  applicant_count?: number
+  custom_questions?: import('../types').CustomQuestion[]
+  // Recruiter-only fields (never sent to job seekers)
+  budget?: string
+  mandatory_skills?: string
+  min_experience_years?: number
+}
+
+export interface Applicant {
+  id: number
+  user_id: number
+  applicant_name: string
+  applicant_email: string
+  cover_letter: string
+  status: string
+  applied_at: string
+  phone?: string
+  linkedin_url?: string
+  portfolio_url?: string
+  applicant_role?: string
+  experience_years?: string
+  expected_salary?: string
+  notice_period?: string
+  applicant_skills?: string
+  recruiter_notes?: string
+  skill_match_score?: number
+  resume_id?: number
+  resume_original_name?: string
+  custom_answers?: Record<string, string>
+  fit_score?: number
+  fit_category?: 'Best Fit' | 'Good Fit' | 'Average Fit' | 'Not Fit'
+  matched_mandatory?: string[]
+  missing_mandatory?: string[]
+}
+
+export interface ApplyPayload {
+  coverLetter?: string
+  phone?: string
+  linkedinUrl?: string
+  portfolioUrl?: string
+  currentRole?: string
+  experienceYears?: string
+  expectedSalary?: string
+  noticePeriod?: string
+  applicantSkills?: string
+  resumeId?: number
+  customAnswers?: Record<string, string>
+}
+
+export async function applyToJob(jobId: string, payload: ApplyPayload): Promise<void> {
+  const numericId = jobId.startsWith('jh-') ? jobId.slice(3) : jobId
+  await api.post(`/jobs/${numericId}/apply`, payload)
+}
+
+export async function getMyApplicationsToJobs(): Promise<string[]> {
+  const res = await api.get('/jobs/my-applications')
+  return res.data
+}
+
+export async function getMyRecruiterJobs(): Promise<RecruiterJob[]> {
+  const res = await api.get('/recruiter/jobs')
+  return res.data
+}
+
+export async function postRecruiterJob(
+  data: Omit<RecruiterJob, 'id' | 'created_at' | 'updated_at' | 'applicant_count'>,
+): Promise<RecruiterJob> {
+  const res = await api.post('/recruiter/jobs', data)
+  return res.data
+}
+
+export async function updateRecruiterJob(
+  id: number,
+  data: Partial<Omit<RecruiterJob, 'id' | 'created_at' | 'updated_at' | 'applicant_count'>> & { isActive?: boolean },
+): Promise<RecruiterJob> {
+  const res = await api.patch(`/recruiter/jobs/${id}`, data)
+  return res.data
+}
+
+export async function getJobApplicants(jobId: number): Promise<Applicant[]> {
+  const res = await api.get(`/recruiter/jobs/${jobId}/applicants`)
+  return res.data
+}
+
+export async function updateApplicantStatus(
+  jobId: number, userId: number,
+  data: { status?: string; recruiterNotes?: string },
+): Promise<void> {
+  await api.patch(`/recruiter/jobs/${jobId}/applicants/${userId}`, data)
 }
 
 // ── Resume ────────────────────────────────────────────────────────────────────

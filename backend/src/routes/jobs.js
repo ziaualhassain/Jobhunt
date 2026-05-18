@@ -20,10 +20,9 @@ function optionalAuth(req, _res, next) {
 
 const STOP_WORDS = new Set([
   'solutions', 'technologies', 'technology', 'methodologies', 'methodology',
-  'architecture', 'architectures', 'design', 'driven', 'native', 'based',
-  'development', 'engineering', 'management', 'practices', 'principles',
-  'concepts', 'patterns', 'strategy', 'strategies', 'framework', 'frameworks',
-  'developer', 'engineer', 'specialist', 'professional',
+  'architectures', 'driven', 'native', 'based',
+  'practices', 'principles', 'concepts', 'patterns',
+  'strategy', 'strategies', 'frameworks',
   'and', 'for', 'the', 'with', 'using',
 ]);
 
@@ -390,6 +389,68 @@ function rankJobs(jobs, filters) {
     .map(({ _score, ...job }) => job);
 }
 
+// JobHunters platform jobs — active jobs posted by recruiters on this platform
+async function getJobHunterJobs(filters) {
+  const { keywords = [], tags = [], experienceLevel = '' } = filters;
+  const allSignals = [...new Set([...keywords, ...tags])].filter(Boolean);
+
+  const conditions = ['j.is_active = TRUE'];
+  const params = [];
+
+  if (allSignals.length > 0) {
+    const signalClauses = allSignals.flatMap(signal => {
+      const words = signal.toLowerCase().split(/\s+/).filter(w => w.length > 1 && !STOP_WORDS.has(w));
+      if (words.length === 0) return [];
+      return words.map(w => {
+        const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        params.push(`\\m${escaped}\\M`);
+        const i = params.length;
+        return `(LOWER(j.title) ~* $${i} OR LOWER(j.skills) ~* $${i} OR LOWER(j.description) ~* $${i})`;
+      });
+    });
+    if (signalClauses.length > 0) conditions.push(`(${signalClauses.join(' OR ')})`);
+  }
+
+  if (experienceLevel) {
+    params.push(experienceLevel.toLowerCase());
+    conditions.push(`LOWER(j.experience_level) = $${params.length}`);
+  }
+
+  const sql = `
+    SELECT j.id, j.title, j.description, j.location, j.job_type,
+           j.experience_level, j.skills, j.salary, j.created_at, j.custom_questions,
+           COALESCE(u.company_name, 'Company') AS company
+    FROM jobhunter_jobs j
+    JOIN users u ON u.id = j.recruiter_id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY j.created_at DESC
+    LIMIT 100
+  `;
+
+  try {
+    const { rows } = await pool.query(sql, params);
+    return rows.map(row => ({
+      job_id:           `jh-${row.id}`,
+      title:            row.title,
+      company:          row.company,
+      location:         row.location || 'Remote',
+      region:           '',
+      url:              '',
+      description:      row.description,
+      salary:           row.salary || '',
+      job_type:         row.job_type,
+      source:           'JobHunters',
+      tags:             row.skills || '',
+      logo:             '',
+      date_posted:      row.created_at ? new Date(row.created_at).toISOString() : null,
+      custom_questions: row.custom_questions || [],
+    }));
+  } catch (err) {
+    console.error('[JobHunterJobs] query failed:', err.message);
+    return [];
+  }
+}
+
 // GET /api/jobs/search
 router.get('/search', optionalAuth, async (req, res) => {
   try {
@@ -413,16 +474,17 @@ router.get('/search', optionalAuth, async (req, res) => {
       region,
     };
 
-    const [liveJobs, theirStackJobs, careerJobs] = await Promise.all([
+    const [liveJobs, theirStackJobs, careerJobs, jobHunterJobs] = await Promise.all([
       aggregateJobs(filters),
       getTheirStackJobs(filters),
       req.user ? getCareerPageJobs(req.user.id, filters) : getDefaultCareerJobs(filters),
+      getJobHunterJobs(filters),
     ]);
 
     // Deduplicate by job_id across all sources
     const seen = new Set();
     const merged = [];
-    for (const job of [...liveJobs, ...theirStackJobs, ...careerJobs]) {
+    for (const job of [...jobHunterJobs, ...liveJobs, ...theirStackJobs, ...careerJobs]) {
       if (!seen.has(job.job_id)) {
         seen.add(job.job_id);
         merged.push(job);
@@ -539,6 +601,99 @@ router.post('/deep-score', async (req, res) => {
 router.post('/admin/enrich-titles', async (_req, res) => {
   res.json({ ok: true, message: 'Title enrichment started in background' });
   enrichMissingTitles().catch(err => console.error('[TitleExtractor] Manual run failed:', err.message));
+});
+
+// ── POST /api/jobs/:jobId/apply  (job seeker applies to a JobHunters job) ─────
+const requireAuth = require('../middleware/auth');
+
+router.post('/:jobId/apply', requireAuth, async (req, res) => {
+  const raw = req.params.jobId.replace(/^jh-/, '');
+  const numericId = parseInt(raw, 10);
+  if (isNaN(numericId)) return res.status(400).json({ error: 'Invalid job id' });
+
+  const {
+    coverLetter = '',
+    phone = null,
+    linkedinUrl = null,
+    portfolioUrl = null,
+    currentRole = null,
+    experienceYears = null,
+    expectedSalary = null,
+    noticePeriod = null,
+    applicantSkills = '',
+    resumeId = null,
+    customAnswers = {},
+  } = req.body;
+
+  try {
+    const { rows: job } = await pool.query(
+      `SELECT j.id, j.skills, j.title, j.salary, j.location, j.description, j.job_type,
+              COALESCE(u.company_name, '') AS company
+       FROM jobhunter_jobs j
+       JOIN users u ON u.id = j.recruiter_id
+       WHERE j.id = $1 AND j.is_active = TRUE`,
+      [numericId]
+    );
+    if (!job[0]) return res.status(404).json({ error: 'Job not found or inactive' });
+
+    const jobSkills = (job[0].skills || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const applicantSkillsLower = (applicantSkills || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const matched = jobSkills.filter(s => applicantSkillsLower.includes(s));
+    const skillMatchScore = jobSkills.length > 0 ? Math.round((matched.length / jobSkills.length) * 100) : 0;
+
+    // Validate resume ownership if provided
+    let validatedResumeId = null;
+    if (resumeId) {
+      const { rows: resumeRows } = await pool.query(
+        'SELECT id FROM user_resumes WHERE id = $1 AND user_id = $2',
+        [resumeId, req.user.id]
+      );
+      if (resumeRows[0]) validatedResumeId = resumeId;
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO job_applications
+         (job_id, user_id, cover_letter, phone, linkedin_url, portfolio_url,
+          applicant_role, experience_years, expected_salary, notice_period,
+          applicant_skills, skill_match_score, resume_id, custom_answers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (job_id, user_id) DO NOTHING
+       RETURNING *`,
+      [numericId, req.user.id, coverLetter, phone, linkedinUrl, portfolioUrl,
+       currentRole, experienceYears, expectedSalary, noticePeriod,
+       applicantSkills || null, skillMatchScore, validatedResumeId,
+       JSON.stringify(customAnswers)]
+    );
+    if (!rows[0]) return res.status(409).json({ error: 'Already applied' });
+
+    const jd = job[0];
+    await pool.query(
+      `INSERT INTO applications
+         (user_id, job_id, title, company, location, description, salary, job_type,
+          source, tags, status, applied_date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'JobHunters',$9,'applied',CURRENT_DATE)
+       ON CONFLICT (user_id, job_id) DO NOTHING`,
+      [req.user.id, `jh-${numericId}`, jd.title, jd.company,
+       jd.location || 'Remote', jd.description, jd.salary, jd.job_type, jd.skills]
+    );
+
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/jobs/my-applications — list applied JobHunters job IDs (jh-{id} format)
+router.get('/my-applications', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT job_id FROM job_applications WHERE user_id = $1',
+      [req.user.id]
+    );
+    res.json(rows.map(r => `jh-${r.job_id}`));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

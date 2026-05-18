@@ -85,7 +85,7 @@ export default function TrackerPage() {
   function handleDrop(col: ApplicationStatus) {
     if (draggingId !== null) {
       const app = applications.find(a => a.id === draggingId)
-      if (app && app.status !== col) {
+      if (app && app.status !== col && app.source !== 'JobHunters') {
         updateMutation.mutate({ id: draggingId, data: { status: col } })
       }
     }
@@ -193,7 +193,11 @@ export default function TrackerPage() {
                         <ApplicationCard
                           key={app.id}
                           app={app}
-                          onStatusChange={(id, status) => updateMutation.mutate({ id, data: { status } })}
+                          onStatusChange={(id, status) => {
+                            const a = applications.find(x => x.id === id)
+                            if (!a || a.source === 'JobHunters') return
+                            updateMutation.mutate({ id, data: { status } })
+                          }}
                           onNotesChange={(id, notes) => updateMutation.mutate({ id, data: { notes } })}
                           onDelete={id => deleteMutation.mutate(id)}
                           onDragStart={handleDragStart}

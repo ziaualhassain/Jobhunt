@@ -15,6 +15,7 @@ const prepRouter = require('./routes/prep');
 const applicationProfileRouter = require('./routes/applicationProfile');
 const autoApplyRouter = require('./routes/autoApply');
 const careerPagesRouter = require('./routes/careerPages');
+const recruiterRouter = require('./routes/recruiter');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -32,6 +33,7 @@ app.use('/api/prep', prepRouter);
 app.use('/api/application-profile', applicationProfileRouter);
 app.use('/api/auto-apply', autoApplyRouter);
 app.use('/api/career-pages', careerPagesRouter);
+app.use('/api/recruiter', recruiterRouter);
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
 

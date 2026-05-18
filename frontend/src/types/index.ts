@@ -1,3 +1,11 @@
+export interface CustomQuestion {
+  id: string;
+  label: string;
+  type: 'text' | 'textarea' | 'select';
+  required: boolean;
+  options?: string[];
+}
+
 export interface Job {
   job_id: string;
   title: string;
@@ -12,6 +20,7 @@ export interface Job {
   tags: string;
   logo?: string;
   date_posted?: string;
+  custom_questions?: CustomQuestion[];
 }
 
 export type ApplicationStatus =
@@ -40,6 +49,7 @@ export interface Application {
   applied_date: string | null;
   created_at: string;
   updated_at: string;
+  job_active?: boolean;
 }
 
 export interface SearchFilters {
