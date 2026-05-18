@@ -318,6 +318,10 @@ export interface RecruiterJob {
   updated_at: string
   applicant_count?: number
   custom_questions?: import('../types').CustomQuestion[]
+  // Recruiter-only fields (never sent to job seekers)
+  budget?: string
+  mandatory_skills?: string
+  min_experience_years?: number
 }
 
 export interface Applicant {
@@ -341,6 +345,10 @@ export interface Applicant {
   resume_id?: number
   resume_original_name?: string
   custom_answers?: Record<string, string>
+  fit_score?: number
+  fit_category?: 'Best Fit' | 'Good Fit' | 'Average Fit' | 'Not Fit'
+  matched_mandatory?: string[]
+  missing_mandatory?: string[]
 }
 
 export interface ApplyPayload {

@@ -273,6 +273,9 @@ async function initDb() {
   await pool.query(`ALTER TABLE jobhunter_jobs ADD COLUMN IF NOT EXISTS custom_questions JSONB DEFAULT '[]'::jsonb`);
   await pool.query(`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS resume_id INTEGER REFERENCES user_resumes(id) ON DELETE SET NULL`);
   await pool.query(`ALTER TABLE job_applications ADD COLUMN IF NOT EXISTS custom_answers JSONB DEFAULT '{}'::jsonb`);
+  await pool.query(`ALTER TABLE jobhunter_jobs ADD COLUMN IF NOT EXISTS budget TEXT`);
+  await pool.query(`ALTER TABLE jobhunter_jobs ADD COLUMN IF NOT EXISTS mandatory_skills TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE jobhunter_jobs ADD COLUMN IF NOT EXISTS min_experience_years INTEGER DEFAULT 0`);
   console.log('[DB] Schema ready');
 }
 

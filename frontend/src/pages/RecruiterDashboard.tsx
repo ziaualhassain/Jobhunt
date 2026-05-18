@@ -19,6 +19,16 @@ const EXP_LEVELS  = ['Junior', 'Mid-level', 'Senior', 'Lead']
 const PIPELINE     = ['Applied', 'Phone Screen', 'Technical', 'Final Interview', 'Offer', 'Rejected'] as const
 type PipelineStatus = typeof PIPELINE[number] | 'All'
 
+const FIT_CATEGORIES = ['Best Fit', 'Good Fit', 'Average Fit', 'Not Fit'] as const
+type FitCategory = typeof FIT_CATEGORIES[number] | 'All'
+
+const FIT_COLORS: Record<string, string> = {
+  'Best Fit':    'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+  'Good Fit':    'bg-blue-500/20 text-blue-300 border-blue-500/40',
+  'Average Fit': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40',
+  'Not Fit':     'bg-slate-700/60 text-slate-400 border-slate-600/60',
+}
+
 const STATUS_COLORS: Record<string, string> = {
   'Applied':         'bg-slate-700/80 text-slate-300',
   'Phone Screen':    'bg-blue-500/20 text-blue-300',
@@ -28,10 +38,6 @@ const STATUS_COLORS: Record<string, string> = {
   'Rejected':        'bg-red-500/20 text-red-400',
 }
 
-const MATCH_COLOR = (score: number) =>
-  score >= 70 ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
-  : score >= 40 ? 'text-yellow-400 bg-yellow-500/15 border-yellow-500/30'
-  : 'text-slate-400 bg-slate-700/50 border-slate-600'
 
 function SkillChips({ raw, highlight = '' }: { raw: string; highlight?: string }) {
   const jobSkills = highlight.toLowerCase().split(',').map(s => s.trim()).filter(Boolean)
@@ -69,6 +75,9 @@ function PostJobForm({ onClose }: { onClose: () => void }) {
   const [experienceLevel, setExperienceLevel] = useState(EXP_LEVELS[1])
   const [skills, setSkills] = useState('')
   const [salary, setSalary] = useState('')
+  const [budget, setBudget] = useState('')
+  const [mandatorySkills, setMandatorySkills] = useState('')
+  const [minExpYears, setMinExpYears] = useState<number>(0)
   const [questions, setQuestions] = useState<CustomQuestion[]>([])
   const [error, setError] = useState('')
 
@@ -90,6 +99,9 @@ function PostJobForm({ onClose }: { onClose: () => void }) {
       job_type: jobType, experience_level: experienceLevel,
       skills, salary, is_active: true,
       custom_questions: questions.filter(q => q.label.trim()),
+      budget: budget.trim() || undefined,
+      mandatory_skills: mandatorySkills.trim(),
+      min_experience_years: minExpYears,
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['recruiter-jobs'] }); onClose() },
     onError: (err: unknown) => {
@@ -136,6 +148,53 @@ function PostJobForm({ onClose }: { onClose: () => void }) {
         </div>
 
         <input className="input w-full" placeholder="Salary range (optional — e.g. $80k–$120k, ₹12–18 LPA)" value={salary} onChange={e => setSalary(e.target.value)} />
+
+        {/* Recruiter-only screening criteria */}
+        <div className="space-y-3 pt-1 border-t border-slate-700/50">
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-semibold text-amber-400/80 uppercase tracking-widest">Recruiter-Only Fields</p>
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400/70 border border-amber-500/20">
+              Not visible to candidates
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500 flex items-center gap-1">
+                <DollarSign size={10} />Budget / CTC Range
+              </label>
+              <input
+                className="input w-full border-amber-500/20 focus:border-amber-500/40"
+                placeholder="e.g. $90k–$110k, ₹20–25 LPA"
+                value={budget}
+                onChange={e => setBudget(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Min. Experience (years)</label>
+              <input
+                type="number"
+                min={0}
+                max={30}
+                className="input w-full border-amber-500/20 focus:border-amber-500/40"
+                placeholder="e.g. 3"
+                value={minExpYears || ''}
+                onChange={e => setMinExpYears(parseInt(e.target.value) || 0)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-slate-500">Mandatory Skills (comma-separated) — used to rank applicants</label>
+            <input
+              className="input w-full border-amber-500/20 focus:border-amber-500/40"
+              placeholder="e.g. React, Node.js, PostgreSQL"
+              value={mandatorySkills}
+              onChange={e => setMandatorySkills(e.target.value)}
+            />
+            {mandatorySkills && <SkillChips raw={mandatorySkills} />}
+          </div>
+        </div>
 
         {/* Custom questions builder */}
         <div className="space-y-2 pt-1">
@@ -240,8 +299,39 @@ function ApplicantCard({ applicant, job, onUpdate }: {
   const initials = (applicant.applicant_name ?? '?')
     .split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
 
+  const fitCategory = applicant.fit_category
+  const fitScore = applicant.fit_score ?? 0
+  const cardBorder = fitCategory === 'Best Fit'
+    ? 'border-emerald-500/30 bg-emerald-500/3'
+    : fitCategory === 'Good Fit'
+      ? 'border-blue-500/25'
+      : 'border-slate-700/60'
+
   return (
-    <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 space-y-3">
+    <div className={`bg-slate-800/60 border rounded-xl p-4 space-y-3 ${cardBorder}`}>
+      {/* Fit banner */}
+      {fitCategory && (
+        <div className="flex items-center justify-between gap-2">
+          <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${FIT_COLORS[fitCategory]}`}>
+            <Star size={9} />
+            {fitCategory}
+            <span className="opacity-60 font-normal ml-0.5">· {fitScore}%</span>
+          </span>
+
+          {/* Mandatory skill breakdown */}
+          {(applicant.matched_mandatory?.length || applicant.missing_mandatory?.length) ? (
+            <div className="flex flex-wrap gap-1">
+              {(applicant.matched_mandatory ?? []).map(s => (
+                <span key={s} className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/25">✓ {s}</span>
+              ))}
+              {(applicant.missing_mandatory ?? []).map(s => (
+                <span key={s} className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/25">✗ {s}</span>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Header row */}
       <div className="flex items-start gap-3">
         {/* Avatar */}
@@ -255,14 +345,6 @@ function ApplicantCard({ applicant, job, onUpdate }: {
               <p className="text-sm font-semibold text-slate-200">{applicant.applicant_name}</p>
               <p className="text-xs text-slate-500">{applicant.applicant_email}</p>
             </div>
-
-            {/* Match score */}
-            {(applicant.skill_match_score ?? 0) > 0 && (
-              <span className={`badge border text-[10px] font-semibold shrink-0 ${MATCH_COLOR(applicant.skill_match_score ?? 0)}`}>
-                <Star size={9} className="inline mr-0.5" />
-                {applicant.skill_match_score}% match
-              </span>
-            )}
           </div>
 
           {/* Meta: current role, experience */}
@@ -416,6 +498,7 @@ function ApplicantCard({ applicant, job, onUpdate }: {
 function ApplicantPanel({ job, onClose }: { job: RecruiterJob; onClose: () => void }) {
   const qc = useQueryClient()
   const [tab, setTab] = useState<PipelineStatus>('All')
+  const [fitFilter, setFitFilter] = useState<FitCategory>('All')
 
   const { data: applicants = [], isLoading, isError } = useQuery({
     queryKey: ['applicants', job.id],
@@ -433,7 +516,13 @@ function ApplicantPanel({ job, onClose }: { job: RecruiterJob; onClose: () => vo
     return acc
   }, {} as Record<string, number>)
 
-  const visible = tab === 'All' ? applicants : applicants.filter(a => a.status === tab)
+  const fitCounts = FIT_CATEGORIES.reduce((acc, c) => {
+    acc[c] = applicants.filter(a => a.fit_category === c).length
+    return acc
+  }, {} as Record<string, number>)
+
+  const pipelineFiltered = tab === 'All' ? applicants : applicants.filter(a => a.status === tab)
+  const visible = fitFilter === 'All' ? pipelineFiltered : pipelineFiltered.filter(a => a.fit_category === fitFilter)
 
   return (
     <div className="card p-5 space-y-4">
@@ -447,29 +536,86 @@ function ApplicantPanel({ job, onClose }: { job: RecruiterJob; onClose: () => vo
         </button>
       </div>
 
-      {/* Pipeline tabs */}
+      {/* Recruiter-only job meta */}
+      {(job.budget || job.min_experience_years || job.mandatory_skills) && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl px-3 py-2.5 space-y-1.5">
+          <p className="text-[10px] font-semibold text-amber-400/70 uppercase tracking-widest">Screening Criteria</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
+            {job.budget && (
+              <span className="flex items-center gap-1"><DollarSign size={10} className="text-amber-400/60" /><span className="text-amber-300/80">{job.budget}</span></span>
+            )}
+            {(job.min_experience_years ?? 0) > 0 && (
+              <span className="flex items-center gap-1"><Briefcase size={10} className="text-amber-400/60" />Min {job.min_experience_years} yr{job.min_experience_years !== 1 ? 's' : ''} exp</span>
+            )}
+          </div>
+          {job.mandatory_skills && (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              <span className="text-[10px] text-slate-500 mr-1">Must have:</span>
+              {job.mandatory_skills.split(',').map(s => s.trim()).filter(Boolean).map(s => (
+                <span key={s} className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">{s}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Fit category filter */}
       {applicants.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {(['All', ...PIPELINE] as PipelineStatus[]).map(s => {
-            const count = s === 'All' ? applicants.length : counts[s]
-            const active = tab === s
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setTab(s)}
-                className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
-                  active ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40'
-                         : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800 border border-transparent'
-                }`}
-              >
-                {s}
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-brand-500/30' : 'bg-slate-800'}`}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
+        <div>
+          <p className="text-[10px] text-slate-600 mb-1.5 uppercase tracking-widest font-semibold">Filter by Fit</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['All', ...FIT_CATEGORIES] as FitCategory[]).map(c => {
+              const count = c === 'All' ? applicants.length : fitCounts[c]
+              const active = fitFilter === c
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setFitFilter(c)}
+                  className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors border ${
+                    active
+                      ? (c === 'All' ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                          : FIT_COLORS[c] ?? 'bg-brand-500/20 text-brand-300 border-brand-500/40')
+                      : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800 border-transparent'
+                  }`}
+                >
+                  {c}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-white/10' : 'bg-slate-800'}`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline stage filter */}
+      {applicants.length > 0 && (
+        <div>
+          <p className="text-[10px] text-slate-600 mb-1.5 uppercase tracking-widest font-semibold">Pipeline Stage</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(['All', ...PIPELINE] as PipelineStatus[]).map(s => {
+              const count = s === 'All' ? applicants.length : counts[s]
+              const active = tab === s
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setTab(s)}
+                  className={`flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg transition-colors ${
+                    active ? 'bg-brand-500/20 text-brand-300 border border-brand-500/40'
+                           : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800 border border-transparent'
+                  }`}
+                >
+                  {s}
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${active ? 'bg-brand-500/30' : 'bg-slate-800'}`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -503,7 +649,9 @@ function ApplicantPanel({ job, onClose }: { job: RecruiterJob; onClose: () => vo
         </div>
       )}
       {!isLoading && applicants.length > 0 && visible.length === 0 && (
-        <p className="text-center text-slate-600 text-sm py-4">No applicants in "{tab}" stage</p>
+        <p className="text-center text-slate-600 text-sm py-4">
+          No applicants match the selected filters
+        </p>
       )}
     </div>
   )
@@ -563,6 +711,27 @@ function JobCardRecruiter({ job, onViewApplicants, activeJobId }: {
       </div>
 
       {job.skills && <SkillChips raw={job.skills} />}
+
+      {/* Recruiter-only indicators */}
+      {(job.budget || job.mandatory_skills || (job.min_experience_years ?? 0) > 0) && (
+        <div className="flex flex-wrap gap-1.5 text-[10px] pt-0.5">
+          {job.budget && (
+            <span className="flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
+              <DollarSign size={8} />{job.budget}
+            </span>
+          )}
+          {(job.min_experience_years ?? 0) > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
+              {job.min_experience_years}+ yrs required
+            </span>
+          )}
+          {job.mandatory_skills && (
+            <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400/80 border border-amber-500/20">
+              {job.mandatory_skills.split(',').length} mandatory skill{job.mandatory_skills.split(',').length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-800/60">
         <p className="text-[11px] text-slate-600 flex items-center gap-1">
