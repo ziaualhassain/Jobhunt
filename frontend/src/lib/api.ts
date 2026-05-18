@@ -317,6 +317,7 @@ export interface RecruiterJob {
   created_at: string
   updated_at: string
   applicant_count?: number
+  custom_questions?: import('../types').CustomQuestion[]
 }
 
 export interface Applicant {
@@ -337,6 +338,9 @@ export interface Applicant {
   applicant_skills?: string
   recruiter_notes?: string
   skill_match_score?: number
+  resume_id?: number
+  resume_original_name?: string
+  custom_answers?: Record<string, string>
 }
 
 export interface ApplyPayload {
@@ -349,6 +353,8 @@ export interface ApplyPayload {
   expectedSalary?: string
   noticePeriod?: string
   applicantSkills?: string
+  resumeId?: number
+  customAnswers?: Record<string, string>
 }
 
 export async function applyToJob(jobId: string, payload: ApplyPayload): Promise<void> {

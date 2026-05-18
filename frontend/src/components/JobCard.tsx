@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   ExternalLink, Bookmark, BookmarkCheck, MapPin, Briefcase, Building2, Tag,
@@ -9,7 +9,7 @@ import type { Job } from '../types'
 import type { FitScore } from '../lib/jobScorer'
 import { scoreLabel, extractTitleFromDescription } from '../lib/jobScorer'
 import type { ResumeAnalysis } from '../lib/api'
-import { deepScoreJob, applyToJob, getMyApplicationsToJobs } from '../lib/api'
+import { deepScoreJob, applyToJob, getMyApplicationsToJobs, getApplicationProfile, listResumes, uploadResume } from '../lib/api'
 import type { DeepScore, ApplyPayload } from '../lib/api'
 import { PERCENTAGE_ENABLE } from '../lib/config'
 import AutoApplyModal from './AutoApplyModal'
@@ -50,7 +50,41 @@ function ApplyModal({ job, onClose, onApplied }: { job: Job; onClose: () => void
     currentRole: '', experienceYears: '', expectedSalary: '', noticePeriod: '',
     applicantSkills: '', coverLetter: '',
   })
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({})
+  const [selectedResumeId, setSelectedResumeId] = useState<number | 'new' | null>(null)
+  const [newResumeFile, setNewResumeFile] = useState<File | null>(null)
   const [error, setError] = useState('')
+
+  const { data: appProfile } = useQuery({
+    queryKey: ['application-profile'],
+    queryFn: getApplicationProfile,
+  })
+
+  const { data: resumes = [] } = useQuery({
+    queryKey: ['resumes'],
+    queryFn: listResumes,
+  })
+
+  // Pre-fill contact/experience from application profile
+  useEffect(() => {
+    if (!appProfile) return
+    setForm(prev => ({
+      ...prev,
+      phone:          appProfile.phone        ?? prev.phone,
+      linkedinUrl:    appProfile.linkedinUrl   ?? prev.linkedinUrl,
+      portfolioUrl:   appProfile.portfolioUrl  ?? prev.portfolioUrl,
+      noticePeriod:   appProfile.noticePeriod  ?? prev.noticePeriod,
+      expectedSalary: appProfile.expectedCTC   ?? prev.expectedSalary,
+    }))
+  }, [appProfile])
+
+  // Default to primary resume once resumes load
+  useEffect(() => {
+    if (resumes.length > 0 && selectedResumeId === null) {
+      const primary = resumes.find(r => r.is_primary) ?? resumes[0]
+      setSelectedResumeId(primary.id)
+    }
+  }, [resumes])
 
   function set(key: keyof ApplyPayload) {
     return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
@@ -58,7 +92,16 @@ function ApplyModal({ job, onClose, onApplied }: { job: Job; onClose: () => void
   }
 
   const mutation = useMutation({
-    mutationFn: () => applyToJob(job.job_id, form),
+    mutationFn: async () => {
+      let finalResumeId: number | undefined
+      if (selectedResumeId === 'new' && newResumeFile) {
+        const uploaded = await uploadResume(newResumeFile, 'Resume')
+        finalResumeId = uploaded.id
+      } else if (typeof selectedResumeId === 'number') {
+        finalResumeId = selectedResumeId
+      }
+      await applyToJob(job.job_id, { ...form, resumeId: finalResumeId, customAnswers })
+    },
     onSuccess: () => { onApplied(); onClose() },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { error?: string } } }
@@ -67,6 +110,7 @@ function ApplyModal({ job, onClose, onApplied }: { job: Job; onClose: () => void
   })
 
   const jobSkills = (job.tags ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const customQuestions = job.custom_questions ?? []
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
@@ -85,6 +129,49 @@ function ApplyModal({ job, onClose, onApplied }: { job: Job; onClose: () => void
         </div>
 
         <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+
+          {/* Resume */}
+          <div className="space-y-2">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Resume</p>
+            {resumes.length > 0 ? (
+              <div className="space-y-2">
+                <select
+                  className="input w-full text-sm"
+                  value={selectedResumeId === 'new' ? 'new' : (selectedResumeId ?? '')}
+                  onChange={e => setSelectedResumeId(e.target.value === 'new' ? 'new' : Number(e.target.value))}
+                >
+                  {resumes.map(r => (
+                    <option key={r.id} value={r.id}>
+                      {r.is_primary ? '★ ' : ''}{r.label} — {r.original_name}
+                    </option>
+                  ))}
+                  <option value="new">Upload new resume…</option>
+                </select>
+                {selectedResumeId === 'new' && (
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="input w-full text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-brand-500/20 file:text-brand-300"
+                    onChange={e => setNewResumeFile(e.target.files?.[0] ?? null)}
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <p className="text-xs text-slate-500">No resumes saved — upload one to attach</p>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  className="input w-full text-sm file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-brand-500/20 file:text-brand-300"
+                  onChange={e => {
+                    setNewResumeFile(e.target.files?.[0] ?? null)
+                    setSelectedResumeId('new')
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
           <div className="space-y-3">
             <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Contact</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -165,6 +252,44 @@ function ApplyModal({ job, onClose, onApplied }: { job: Job; onClose: () => void
               onChange={set('coverLetter')}
             />
           </div>
+
+          {/* Custom questions */}
+          {customQuestions.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Additional Questions</p>
+              {customQuestions.map(q => (
+                <Field key={q.id} label={`${q.label}${q.required ? ' *' : ''}`}>
+                  {q.type === 'textarea' ? (
+                    <textarea
+                      className="input w-full h-20 resize-none text-sm"
+                      placeholder="Your answer…"
+                      value={customAnswers[q.id] ?? ''}
+                      onChange={e => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      required={q.required}
+                    />
+                  ) : q.type === 'select' && q.options?.length ? (
+                    <select
+                      className="input w-full text-sm"
+                      value={customAnswers[q.id] ?? ''}
+                      onChange={e => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      required={q.required}
+                    >
+                      <option value="">Select…</option>
+                      {q.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      className="input w-full text-sm"
+                      placeholder="Your answer…"
+                      value={customAnswers[q.id] ?? ''}
+                      onChange={e => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      required={q.required}
+                    />
+                  )}
+                </Field>
+              ))}
+            </div>
+          )}
 
           {error && <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
         </div>

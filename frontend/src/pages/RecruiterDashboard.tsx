@@ -4,7 +4,9 @@ import {
   Briefcase, Plus, X, Loader2, AlertCircle, Users, ChevronDown, ChevronUp,
   ToggleLeft, ToggleRight, CheckCircle2, Clock, Building2, MapPin, Phone,
   Linkedin, Globe, DollarSign, Star, FileText, StickyNote, User, PowerOff,
+  Trash2, Download,
 } from 'lucide-react'
+import type { CustomQuestion } from '../types'
 import {
   getMyRecruiterJobs, postRecruiterJob, updateRecruiterJob,
   getJobApplicants, updateApplicantStatus,
@@ -54,6 +56,10 @@ function SkillChips({ raw, highlight = '' }: { raw: string; highlight?: string }
 
 // ── Post Job Form ─────────────────────────────────────────────────────────────
 
+function newQuestion(): CustomQuestion {
+  return { id: crypto.randomUUID(), label: '', type: 'text', required: false }
+}
+
 function PostJobForm({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient()
   const [title, setTitle] = useState('')
@@ -63,10 +69,28 @@ function PostJobForm({ onClose }: { onClose: () => void }) {
   const [experienceLevel, setExperienceLevel] = useState(EXP_LEVELS[1])
   const [skills, setSkills] = useState('')
   const [salary, setSalary] = useState('')
+  const [questions, setQuestions] = useState<CustomQuestion[]>([])
   const [error, setError] = useState('')
 
+  function addQuestion() {
+    setQuestions(prev => [...prev, newQuestion()])
+  }
+
+  function removeQuestion(id: string) {
+    setQuestions(prev => prev.filter(q => q.id !== id))
+  }
+
+  function updateQuestion(id: string, patch: Partial<CustomQuestion>) {
+    setQuestions(prev => prev.map(q => q.id === id ? { ...q, ...patch } : q))
+  }
+
   const mutation = useMutation({
-    mutationFn: () => postRecruiterJob({ title, description, location, job_type: jobType, experience_level: experienceLevel, skills, salary, is_active: true }),
+    mutationFn: () => postRecruiterJob({
+      title, description, location,
+      job_type: jobType, experience_level: experienceLevel,
+      skills, salary, is_active: true,
+      custom_questions: questions.filter(q => q.label.trim()),
+    }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['recruiter-jobs'] }); onClose() },
     onError: (err: unknown) => {
       const e = err as { response?: { data?: { error?: string } } }
@@ -112,6 +136,77 @@ function PostJobForm({ onClose }: { onClose: () => void }) {
         </div>
 
         <input className="input w-full" placeholder="Salary range (optional — e.g. $80k–$120k, ₹12–18 LPA)" value={salary} onChange={e => setSalary(e.target.value)} />
+
+        {/* Custom questions builder */}
+        <div className="space-y-2 pt-1">
+          <div className="flex items-center justify-between">
+            <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest">Custom Questions</p>
+            <button
+              type="button"
+              onClick={addQuestion}
+              className="flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300 font-medium"
+            >
+              <Plus size={12} />Add Question
+            </button>
+          </div>
+
+          {questions.length === 0 && (
+            <p className="text-[11px] text-slate-600 italic">
+              No custom questions — click "+ Add Question" to ask applicants something specific.
+            </p>
+          )}
+
+          {questions.map((q, idx) => (
+            <div key={q.id} className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-slate-600 font-mono shrink-0">Q{idx + 1}</span>
+                <input
+                  className="input flex-1 text-sm py-1.5"
+                  placeholder="Question label e.g. 'Are you authorized to work in the US?'"
+                  value={q.label}
+                  onChange={e => updateQuestion(q.id, { label: e.target.value })}
+                />
+                <button type="button" onClick={() => removeQuestion(q.id)} className="text-slate-600 hover:text-red-400 shrink-0">
+                  <Trash2 size={13} />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  className="input text-xs py-1 pr-6"
+                  value={q.type}
+                  onChange={e => updateQuestion(q.id, { type: e.target.value as CustomQuestion['type'] })}
+                >
+                  <option value="text">Short text</option>
+                  <option value="textarea">Long text</option>
+                  <option value="select">Multiple choice</option>
+                </select>
+
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={q.required}
+                    onChange={e => updateQuestion(q.id, { required: e.target.checked })}
+                    className="w-3 h-3 accent-brand-500"
+                  />
+                  Required
+                </label>
+              </div>
+
+              {q.type === 'select' && (
+                <div className="space-y-1">
+                  <p className="text-[10px] text-slate-600">Options (one per line)</p>
+                  <textarea
+                    className="input w-full text-xs h-16 resize-none"
+                    placeholder={"Yes\nNo\nMaybe"}
+                    value={(q.options ?? []).join('\n')}
+                    onChange={e => updateQuestion(q.id, { options: e.target.value.split('\n').map(s => s.trim()).filter(Boolean) })}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
 
         {error && (
           <div className="flex items-center gap-2 text-red-400 text-sm bg-red-900/20 border border-red-900 rounded-lg p-3">
@@ -218,6 +313,15 @@ function ApplicantCard({ applicant, job, onUpdate }: {
         <SkillChips raw={applicant.applicant_skills} highlight={job.skills} />
       )}
 
+      {/* Resume */}
+      {applicant.resume_original_name && (
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <Download size={10} className="text-brand-400 shrink-0" />
+          <span className="font-medium text-slate-300">Resume:</span>
+          <span>{applicant.resume_original_name}</span>
+        </div>
+      )}
+
       {/* Cover letter */}
       {applicant.cover_letter && (
         <div>
@@ -234,6 +338,23 @@ function ApplicantCard({ applicant, job, onUpdate }: {
               {applicant.cover_letter}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Custom question answers */}
+      {applicant.custom_answers && Object.keys(applicant.custom_answers).length > 0 && job.custom_questions && job.custom_questions.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Answers</p>
+          {job.custom_questions.map(q => {
+            const answer = (applicant.custom_answers ?? {})[q.id]
+            if (!answer) return null
+            return (
+              <div key={q.id} className="bg-slate-900/40 rounded-lg px-3 py-2 border border-slate-800">
+                <p className="text-[10px] text-slate-500 mb-0.5">{q.label}</p>
+                <p className="text-xs text-slate-300">{answer}</p>
+              </div>
+            )
+          })}
         </div>
       )}
 

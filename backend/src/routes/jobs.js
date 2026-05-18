@@ -418,7 +418,7 @@ async function getJobHunterJobs(filters) {
 
   const sql = `
     SELECT j.id, j.title, j.description, j.location, j.job_type,
-           j.experience_level, j.skills, j.salary, j.created_at,
+           j.experience_level, j.skills, j.salary, j.created_at, j.custom_questions,
            COALESCE(u.company_name, 'Company') AS company
     FROM jobhunter_jobs j
     JOIN users u ON u.id = j.recruiter_id
@@ -430,19 +430,20 @@ async function getJobHunterJobs(filters) {
   try {
     const { rows } = await pool.query(sql, params);
     return rows.map(row => ({
-      job_id:      `jh-${row.id}`,
-      title:       row.title,
-      company:     row.company,
-      location:    row.location || 'Remote',
-      region:      '',
-      url:         '',
-      description: row.description,
-      salary:      row.salary || '',
-      job_type:    row.job_type,
-      source:      'JobHunters',
-      tags:        row.skills || '',
-      logo:        '',
-      date_posted: row.created_at ? new Date(row.created_at).toISOString() : null,
+      job_id:           `jh-${row.id}`,
+      title:            row.title,
+      company:          row.company,
+      location:         row.location || 'Remote',
+      region:           '',
+      url:              '',
+      description:      row.description,
+      salary:           row.salary || '',
+      job_type:         row.job_type,
+      source:           'JobHunters',
+      tags:             row.skills || '',
+      logo:             '',
+      date_posted:      row.created_at ? new Date(row.created_at).toISOString() : null,
+      custom_questions: row.custom_questions || [],
     }));
   } catch (err) {
     console.error('[JobHunterJobs] query failed:', err.message);
@@ -620,6 +621,8 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
     expectedSalary = null,
     noticePeriod = null,
     applicantSkills = '',
+    resumeId = null,
+    customAnswers = {},
   } = req.body;
 
   try {
@@ -638,17 +641,28 @@ router.post('/:jobId/apply', requireAuth, async (req, res) => {
     const matched = jobSkills.filter(s => applicantSkillsLower.includes(s));
     const skillMatchScore = jobSkills.length > 0 ? Math.round((matched.length / jobSkills.length) * 100) : 0;
 
+    // Validate resume ownership if provided
+    let validatedResumeId = null;
+    if (resumeId) {
+      const { rows: resumeRows } = await pool.query(
+        'SELECT id FROM user_resumes WHERE id = $1 AND user_id = $2',
+        [resumeId, req.user.id]
+      );
+      if (resumeRows[0]) validatedResumeId = resumeId;
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO job_applications
          (job_id, user_id, cover_letter, phone, linkedin_url, portfolio_url,
           applicant_role, experience_years, expected_salary, notice_period,
-          applicant_skills, skill_match_score)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          applicant_skills, skill_match_score, resume_id, custom_answers)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (job_id, user_id) DO NOTHING
        RETURNING *`,
       [numericId, req.user.id, coverLetter, phone, linkedinUrl, portfolioUrl,
        currentRole, experienceYears, expectedSalary, noticePeriod,
-       applicantSkills || null, skillMatchScore]
+       applicantSkills || null, skillMatchScore, validatedResumeId,
+       JSON.stringify(customAnswers)]
     );
     if (!rows[0]) return res.status(409).json({ error: 'Already applied' });
 

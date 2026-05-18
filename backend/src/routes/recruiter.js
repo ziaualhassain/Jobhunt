@@ -47,17 +47,25 @@ router.get('/jobs', async (req, res) => {
 
 // POST /api/recruiter/jobs — post a new job
 router.post('/jobs', async (req, res) => {
-  const { title, description, location, jobType, experienceLevel, skills, salary } = req.body;
+  const {
+    title, description, location,
+    job_type, jobType,
+    experience_level, experienceLevel,
+    skills, salary, custom_questions,
+  } = req.body;
   if (!title?.trim()) return res.status(400).json({ error: 'title is required' });
+  const finalJobType  = job_type  ?? jobType  ?? 'Full-time';
+  const finalExpLevel = experience_level ?? experienceLevel ?? 'Mid-level';
+  const finalQuestions = Array.isArray(custom_questions) ? custom_questions : [];
 
   try {
     const { rows } = await pool.query(
       `INSERT INTO jobhunter_jobs
-         (recruiter_id, title, description, location, job_type, experience_level, skills, salary)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+         (recruiter_id, title, description, location, job_type, experience_level, skills, salary, custom_questions)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
       [req.user.id, title.trim(), description ?? '', location ?? 'Remote',
-       jobType ?? 'Full-time', experienceLevel ?? 'Mid-level',
-       skills ?? '', salary ?? null]
+       finalJobType, finalExpLevel, skills ?? '', salary ?? null,
+       JSON.stringify(finalQuestions)]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
@@ -67,7 +75,7 @@ router.post('/jobs', async (req, res) => {
 
 // PATCH /api/recruiter/jobs/:id — update a job
 router.patch('/jobs/:id', async (req, res) => {
-  const { title, description, location, jobType, experienceLevel, skills, salary, isActive } = req.body;
+  const { title, description, location, jobType, experienceLevel, skills, salary, isActive, customQuestions, custom_questions } = req.body;
 
   try {
     const { rows } = await pool.query(
@@ -80,12 +88,14 @@ router.patch('/jobs/:id', async (req, res) => {
            skills           = COALESCE($6, skills),
            salary           = COALESCE($7, salary),
            is_active        = COALESCE($8, is_active),
+           custom_questions = COALESCE($11, custom_questions),
            updated_at       = NOW()
        WHERE id = $9 AND recruiter_id = $10
        RETURNING *`,
       [title ?? null, description ?? null, location ?? null, jobType ?? null,
        experienceLevel ?? null, skills ?? null, salary ?? null,
-       isActive ?? null, req.params.id, req.user.id]
+       isActive ?? null, req.params.id, req.user.id,
+       customQuestions ?? custom_questions ?? null]
     );
     if (!rows[0]) return res.status(404).json({ error: 'Not found' });
 
@@ -152,10 +162,13 @@ router.get('/jobs/:id/applicants', async (req, res) => {
     const { rows } = await pool.query(
       `SELECT ja.id, ja.job_id, ja.user_id, ja.cover_letter, ja.status, ja.applied_at, ja.updated_at,
               ja.phone, ja.linkedin_url, ja.portfolio_url, ja.applicant_role, ja.experience_years,
-              ja.expected_salary, ja.notice_period, ja.applicant_skills, ja.recruiter_notes, ja.skill_match_score,
+              ja.expected_salary, ja.notice_period, ja.applicant_skills, ja.recruiter_notes,
+              ja.skill_match_score, ja.resume_id, ja.custom_answers,
+              ur.original_name AS resume_original_name,
               u.name AS applicant_name, u.email AS applicant_email
        FROM job_applications ja
        JOIN users u ON u.id = ja.user_id
+       LEFT JOIN user_resumes ur ON ur.id = ja.resume_id
        WHERE ja.job_id = $1
        ORDER BY ja.skill_match_score DESC, ja.applied_at DESC`,
       [req.params.id]
